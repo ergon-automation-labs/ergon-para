@@ -16,25 +16,13 @@ defmodule BotArmyPara.Application do
 
   @impl true
   def start(_type, _args) do
-    # Note: BotArmyRuntime.Telemetry and BotArmyRuntime.NATS.Connection are started
-    # by bot_army_runtime automatically — do not add them here.
-
     children =
       []
-      |> maybe_add_repo()
       |> maybe_add_pulse_publisher()
       |> maybe_add_workers()
 
     opts = [strategy: :one_for_one, name: BotArmyPara.Supervisor]
     Supervisor.start_link(children, opts)
-  end
-
-  defp maybe_add_repo(children) do
-    if @env == :test do
-      children
-    else
-      [{BotArmyPara.Repo, []} | children]
-    end
   end
 
   defp maybe_add_pulse_publisher(children) do
@@ -49,10 +37,7 @@ defmodule BotArmyPara.Application do
     if @env == :test do
       children
     else
-      # Bot-specific workers and pollers go here (GenServers that do async work)
-      # Examples: Scheduler, Poller, Watcher
-      # Pattern: gated with if @env == :test to prevent long-running processes in test
-      children
+      [{BotArmyPara.NATS.Consumer, []} | children]
     end
   end
 end

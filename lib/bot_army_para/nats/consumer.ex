@@ -18,9 +18,11 @@ defmodule BotArmyPara.NATS.Consumer do
 
   # Register subjects with their metadata for runtime discovery
   @subjects [
-    # Add your subjects here:
-    # %{subject: "example.task.list", type: :request_reply, description: "List tasks"},
-    # %{subject: "example.event.>", type: :subscribe, description: "Example events"}
+    %{
+      subject: "para.fs.write",
+      type: :request_reply,
+      description: "Write or append files under PARA_FS_ROOT with path guards"
+    }
   ]
 
   def start_link(opts) do
@@ -49,7 +51,7 @@ defmodule BotArmyPara.NATS.Consumer do
 
         subscriptions =
           [
-            # Add your subjects here
+            "para.fs.write"
           ]
           |> Enum.map(fn subject ->
             case Gnat.sub(conn, self(), subject) do
@@ -89,9 +91,9 @@ defmodule BotArmyPara.NATS.Consumer do
       # Handle request/reply patterns
       if msg.reply_to do
         case msg.topic do
-          # Add your request/reply handlers here
-          # "example.task.list" ->
-          #   handle_task_list(msg, state)
+          "para.fs.write" ->
+            handle_para_fs_write(msg, state)
+
           _ ->
             Logger.debug("Unknown request/reply subject: #{msg.topic}")
         end
@@ -129,24 +131,37 @@ defmodule BotArmyPara.NATS.Consumer do
   end
 
   # Message routing
-  defp route_message(message, topic) do
+  defp route_message(_message, topic) do
     # Route decoded messages to appropriate handlers
     Logger.debug("Routing message from #{topic}")
   end
 
   # Request/reply handlers
-  # defp handle_task_list(msg, state) do
-  #   response =
-  #     case get_tasks() do
-  #       {:ok, tasks} ->
-  #         BotArmyRuntime.NATS.Reply.ok(%{"tasks" => tasks})
-  #
-  #       {:error, reason} ->
-  #         BotArmyRuntime.NATS.Reply.error(inspect(reason), :list_failed)
-  #     end
-  #
-  #   if state.conn do
-  #     Gnat.pub(state.conn, msg.reply_to, response)
-  #   end
-  # end
+  defp handle_para_fs_write(msg, state) do
+    response =
+      with {:ok, payload} <- decode_request_body(msg.body),
+           {:ok, data} <- BotArmyPara.ParaFs.handle_write(payload) do
+        BotArmyRuntime.NATS.Reply.ok(data)
+      else
+        {:error, message, code} ->
+          BotArmyRuntime.NATS.Reply.error(message, code)
+
+        {:error, :invalid_json} ->
+          BotArmyRuntime.NATS.Reply.error("invalid JSON", :validation_error)
+      end
+
+    if state.conn do
+      Gnat.pub(state.conn, msg.reply_to, response)
+    end
+  end
+
+  defp decode_request_body(body) when is_binary(body) do
+    case Jason.decode(body) do
+      {:ok, payload} when is_map(payload) -> {:ok, payload}
+      _ -> {:error, :invalid_json}
+    end
+  end
+
+  defp decode_request_body(%{} = payload), do: {:ok, payload}
+  defp decode_request_body(_), do: {:error, :invalid_json}
 end
