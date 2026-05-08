@@ -12,32 +12,18 @@ defmodule BotArmyPara.Application do
 
   use Application
 
-  @env Mix.env()
-
   @impl true
   def start(_type, _args) do
     children =
       []
-      |> maybe_add_pulse_publisher()
-      |> maybe_add_workers()
+      |> add_pulse_publisher()
+      |> add_workers()
 
     opts = [strategy: :one_for_one, name: BotArmyPara.Supervisor]
     Supervisor.start_link(children, opts)
   end
 
-  defp maybe_add_pulse_publisher(children) do
-    if @env == :test do
-      children
-    else
-      [{BotArmyPara.PulsePublisher, []} | children]
-    end
-  end
+  defp add_pulse_publisher(children), do: [{BotArmyPara.PulsePublisher, []} | children]
 
-  defp maybe_add_workers(children) do
-    if @env == :test do
-      children
-    else
-      [{BotArmyPara.NATS.Consumer, []} | children]
-    end
-  end
+  defp add_workers(children), do: [{BotArmyPara.NATS.Consumer, []} | children]
 end
