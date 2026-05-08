@@ -12,6 +12,10 @@ defmodule BotArmyPara.NATS.Consumer do
 
   use GenServer
   require Logger
+  alias BotArmyCore.NATS.Decoder
+  alias BotArmyPara.{ParaFs, ParaNotes}
+  alias BotArmyRuntime.NATS.{Connection, Reply}
+  alias BotArmyRuntime.{Registry, Tracing}
 
   @reconnect_delay_ms 5000
   @version Mix.Project.config()[:version]
@@ -22,6 +26,21 @@ defmodule BotArmyPara.NATS.Consumer do
       subject: "para.fs.write",
       type: :request_reply,
       description: "Write or append files under PARA_FS_ROOT with path guards"
+    },
+    %{
+      subject: "para.capture.append",
+      type: :request_reply,
+      description: "Append a timestamped bot note into inbox/bots/<source>.md"
+    },
+    %{
+      subject: "para.note.route",
+      type: :request_reply,
+      description: "Route a note into project/area logs (or inbox fallback)"
+    },
+    %{
+      subject: "para.digest.generate",
+      type: :request_reply,
+      description: "Generate digest markdown from selected PARA files"
     }
   ]
 
@@ -44,15 +63,21 @@ defmodule BotArmyPara.NATS.Consumer do
 
   @impl true
   def handle_continue(:connect, state) do
-    case GenServer.call(BotArmyRuntime.NATS.Connection, :get_connection, 5000) do
+    case GenServer.call(Connection, :get_connection, 5000) do
       {:ok, conn} ->
-        BotArmyRuntime.NATS.Connection.subscribe_to_status()
+        Connection.subscribe_to_status()
         Logger.info("Connected to NATS, subscribing to topics")
 
-        subscriptions = subscribe_subjects(conn, ["para.fs.write"])
+        subscriptions =
+          subscribe_subjects(conn, [
+            "para.fs.write",
+            "para.capture.append",
+            "para.note.route",
+            "para.digest.generate"
+          ])
 
         # Register subjects for runtime discovery
-        BotArmyRuntime.Registry.register("para", @subjects, @version)
+        Registry.register("para", @subjects, @version)
 
         {:noreply, %{state | subscriptions: subscriptions, conn: conn}}
 
@@ -70,7 +95,7 @@ defmodule BotArmyPara.NATS.Consumer do
 
   @impl true
   def handle_info({:msg, msg}, state) do
-    BotArmyRuntime.Tracing.with_consumer_span(msg.topic, Map.get(msg, :headers), fn ->
+    Tracing.with_consumer_span(msg.topic, Map.get(msg, :headers), fn ->
       Logger.debug("Received NATS message on subject: #{msg.topic}")
       handle_message(msg, state)
     end)
@@ -131,11 +156,20 @@ defmodule BotArmyPara.NATS.Consumer do
   defp handle_request(%{topic: "para.fs.write"} = msg, state),
     do: handle_para_fs_write(msg, state)
 
+  defp handle_request(%{topic: "para.capture.append"} = msg, state),
+    do: handle_para_capture_append(msg, state)
+
+  defp handle_request(%{topic: "para.note.route"} = msg, state),
+    do: handle_para_note_route(msg, state)
+
+  defp handle_request(%{topic: "para.digest.generate"} = msg, state),
+    do: handle_para_digest_generate(msg, state)
+
   defp handle_request(%{topic: topic}, _state),
     do: Logger.debug("Unknown request/reply subject: #{topic}")
 
   defp handle_pubsub(msg) do
-    case BotArmyCore.NATS.Decoder.decode(msg.body) do
+    case Decoder.decode(msg.body) do
       {:ok, decoded_message} ->
         route_message(decoded_message, msg.topic)
 
@@ -148,19 +182,58 @@ defmodule BotArmyPara.NATS.Consumer do
   defp handle_para_fs_write(msg, state) do
     response =
       with {:ok, payload} <- decode_request_body(msg.body),
-           {:ok, data} <- BotArmyPara.ParaFs.handle_write(payload) do
-        BotArmyRuntime.NATS.Reply.ok(data)
+           {:ok, data} <- ParaFs.handle_write(payload) do
+        Reply.ok(data)
       else
         {:error, message, code} ->
-          BotArmyRuntime.NATS.Reply.error(message, code)
+          Reply.error(message, code)
 
         {:error, :invalid_json} ->
-          BotArmyRuntime.NATS.Reply.error("invalid JSON", :validation_error)
+          Reply.error("invalid JSON", :validation_error)
       end
 
     if state.conn do
       Gnat.pub(state.conn, msg.reply_to, response)
     end
+  end
+
+  defp handle_para_capture_append(msg, state) do
+    response =
+      with {:ok, payload} <- decode_request_body(msg.body),
+           {:ok, data} <- ParaNotes.capture_append(payload) do
+        Reply.ok(data)
+      else
+        {:error, message, code} -> Reply.error(message, code)
+        {:error, :invalid_json} -> Reply.error("invalid JSON", :validation_error)
+      end
+
+    if state.conn, do: Gnat.pub(state.conn, msg.reply_to, response)
+  end
+
+  defp handle_para_note_route(msg, state) do
+    response =
+      with {:ok, payload} <- decode_request_body(msg.body),
+           {:ok, data} <- ParaNotes.route_note(payload) do
+        Reply.ok(data)
+      else
+        {:error, message, code} -> Reply.error(message, code)
+        {:error, :invalid_json} -> Reply.error("invalid JSON", :validation_error)
+      end
+
+    if state.conn, do: Gnat.pub(state.conn, msg.reply_to, response)
+  end
+
+  defp handle_para_digest_generate(msg, state) do
+    response =
+      with {:ok, payload} <- decode_request_body(msg.body),
+           {:ok, data} <- ParaNotes.digest_generate(payload) do
+        Reply.ok(data)
+      else
+        {:error, message, code} -> Reply.error(message, code)
+        {:error, :invalid_json} -> Reply.error("invalid JSON", :validation_error)
+      end
+
+    if state.conn, do: Gnat.pub(state.conn, msg.reply_to, response)
   end
 
   defp decode_request_body(body) when is_binary(body) do

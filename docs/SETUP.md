@@ -230,6 +230,18 @@ make format           # Format Elixir code
 make clean            # Remove build artifacts
 ```
 
+## PARA Note Subjects
+
+`bot_army_para` exposes request/reply subjects for safe writes and "alive documentation":
+
+- `para.fs.write` - low-level guarded write/append under `PARA_FS_ROOT`
+- `para.capture.append` - append timestamped captures to `inbox/bots/<source_bot>.md`
+- `para.note.route` - route notes to project/area logs (`projects/<slug>/WEEKLY_LOG.md`, `areas/<slug>/LOG.md`) or inbox fallback
+- `para.digest.generate` - generate a digest file from selected `source_paths`
+
+All request payloads require `"schema_version": "1.0"`.
+If `PARA_FS_WRITE_TOKEN` is set in runtime env, include `auth_token` in requests.
+
 ## Release Configuration
 
 The OTP release is configured in `mix.exs`:
