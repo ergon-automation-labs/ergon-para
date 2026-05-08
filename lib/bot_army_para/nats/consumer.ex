@@ -49,22 +49,7 @@ defmodule BotArmyPara.NATS.Consumer do
         BotArmyRuntime.NATS.Connection.subscribe_to_status()
         Logger.info("Connected to NATS, subscribing to topics")
 
-        subscriptions =
-          [
-            "para.fs.write"
-          ]
-          |> Enum.map(fn subject ->
-            case Gnat.sub(conn, self(), subject) do
-              {:ok, sub} ->
-                Logger.info("Subscribed to #{subject}")
-                sub
-
-              {:error, reason} ->
-                Logger.error("Failed to subscribe to #{subject}: #{inspect(reason)}")
-                nil
-            end
-          end)
-          |> Enum.filter(&(not is_nil(&1)))
+        subscriptions = subscribe_subjects(conn, ["para.fs.write"])
 
         # Register subjects for runtime discovery
         BotArmyRuntime.Registry.register("para", @subjects, @version)
@@ -87,26 +72,7 @@ defmodule BotArmyPara.NATS.Consumer do
   def handle_info({:msg, msg}, state) do
     BotArmyRuntime.Tracing.with_consumer_span(msg.topic, Map.get(msg, :headers), fn ->
       Logger.debug("Received NATS message on subject: #{msg.topic}")
-
-      # Handle request/reply patterns
-      if msg.reply_to do
-        case msg.topic do
-          "para.fs.write" ->
-            handle_para_fs_write(msg, state)
-
-          _ ->
-            Logger.debug("Unknown request/reply subject: #{msg.topic}")
-        end
-      else
-        # Handle pub/sub messages
-        case BotArmyCore.NATS.Decoder.decode(msg.body) do
-          {:ok, decoded_message} ->
-            route_message(decoded_message, msg.topic)
-
-          {:error, reason} ->
-            Logger.warning("Failed to decode message from #{msg.topic}: #{inspect(reason)}")
-        end
-      end
+      handle_message(msg, state)
     end)
 
     {:noreply, state}
@@ -134,6 +100,48 @@ defmodule BotArmyPara.NATS.Consumer do
   defp route_message(_message, topic) do
     # Route decoded messages to appropriate handlers
     Logger.debug("Routing message from #{topic}")
+  end
+
+  defp subscribe_subjects(conn, subjects) do
+    subjects
+    |> Enum.map(&subscribe_subject(conn, &1))
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp subscribe_subject(conn, subject) do
+    case Gnat.sub(conn, self(), subject) do
+      {:ok, sub} ->
+        Logger.info("Subscribed to #{subject}")
+        sub
+
+      {:error, reason} ->
+        Logger.error("Failed to subscribe to #{subject}: #{inspect(reason)}")
+        nil
+    end
+  end
+
+  defp handle_message(msg, state) do
+    if msg.reply_to do
+      handle_request(msg, state)
+    else
+      handle_pubsub(msg)
+    end
+  end
+
+  defp handle_request(%{topic: "para.fs.write"} = msg, state),
+    do: handle_para_fs_write(msg, state)
+
+  defp handle_request(%{topic: topic}, _state),
+    do: Logger.debug("Unknown request/reply subject: #{topic}")
+
+  defp handle_pubsub(msg) do
+    case BotArmyCore.NATS.Decoder.decode(msg.body) do
+      {:ok, decoded_message} ->
+        route_message(decoded_message, msg.topic)
+
+      {:error, reason} ->
+        Logger.warning("Failed to decode message from #{msg.topic}: #{inspect(reason)}")
+    end
   end
 
   # Request/reply handlers
