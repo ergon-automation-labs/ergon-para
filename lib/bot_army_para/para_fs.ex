@@ -153,8 +153,7 @@ defmodule BotArmyPara.ParaFs do
     end
   end
 
-  defp format_file_reason(reason) when is_atom(reason), do: :file.format_error(reason)
-  defp format_file_reason(reason), do: inspect(reason)
+  defp format_file_reason(reason), do: :file.format_error(reason)
 
   defp build_success_response(relative_path, target, content, mode) do
     %{
