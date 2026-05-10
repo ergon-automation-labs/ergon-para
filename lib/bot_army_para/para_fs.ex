@@ -17,8 +17,8 @@ defmodule BotArmyPara.ParaFs do
          {:ok, content} <- decode_content(payload),
          :ok <- validate_size(content),
          {:ok, mode} <- validate_mode(Map.get(payload, "mode", "write")),
-         {:ok, target} <- resolve_target(relative_path) do
-      write(target, content, mode)
+         {:ok, target} <- resolve_target(relative_path),
+         :ok <- write(target, content, mode) do
       {:ok, build_success_response(relative_path, target, content, mode)}
     end
   end
@@ -134,14 +134,27 @@ defmodule BotArmyPara.ParaFs do
   end
 
   defp write(target, content, :write) do
-    File.mkdir_p!(Path.dirname(target))
-    File.write!(target, content, [:binary])
+    with :ok <- File.mkdir_p(Path.dirname(target)),
+         :ok <- File.write(target, content, [:binary]) do
+      :ok
+    else
+      {:error, reason} ->
+        {:error, "file write failed: #{format_file_reason(reason)}", :io_error}
+    end
   end
 
   defp write(target, content, :append) do
-    File.mkdir_p!(Path.dirname(target))
-    File.write!(target, content, [:append, :binary])
+    with :ok <- File.mkdir_p(Path.dirname(target)),
+         :ok <- File.write(target, content, [:append, :binary]) do
+      :ok
+    else
+      {:error, reason} ->
+        {:error, "file append failed: #{format_file_reason(reason)}", :io_error}
+    end
   end
+
+  defp format_file_reason(reason) when is_atom(reason), do: :file.format_error(reason)
+  defp format_file_reason(reason), do: inspect(reason)
 
   defp build_success_response(relative_path, target, content, mode) do
     %{

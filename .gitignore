@@ -5,3 +5,4 @@
 /doc/
 *.ez
 erl_crash.dump
+para_bot-*.tar.gz
