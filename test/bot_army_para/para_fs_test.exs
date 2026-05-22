@@ -11,15 +11,21 @@ defmodule BotArmyPara.ParaFsTest do
 
     previous_root = System.get_env("PARA_FS_ROOT")
     previous_token = System.get_env("PARA_FS_WRITE_TOKEN")
+    previous_uid = System.get_env("PARA_FS_OWNER_UID")
+    previous_gid = System.get_env("PARA_FS_OWNER_GID")
 
     System.put_env("PARA_FS_ROOT", tmp_dir)
     System.delete_env("PARA_FS_WRITE_TOKEN")
+    System.delete_env("PARA_FS_OWNER_UID")
+    System.delete_env("PARA_FS_OWNER_GID")
 
     on_exit(fn ->
       File.rm_rf!(tmp_dir)
 
       restore_env("PARA_FS_ROOT", previous_root)
       restore_env("PARA_FS_WRITE_TOKEN", previous_token)
+      restore_env("PARA_FS_OWNER_UID", previous_uid)
+      restore_env("PARA_FS_OWNER_GID", previous_gid)
     end)
 
     {:ok, tmp_dir: tmp_dir}

@@ -134,8 +134,10 @@ defmodule BotArmyPara.ParaFs do
   end
 
   defp write(target, content, :write) do
-    with :ok <- File.mkdir_p(Path.dirname(target)),
-         :ok <- File.write(target, content, [:binary]) do
+    with {:ok, parent} <- ensure_parent_dir(target),
+         :ok <- File.write(target, content, [:binary]),
+         :ok <- apply_ownership(parent),
+         :ok <- apply_ownership(target) do
       :ok
     else
       {:error, reason} ->
@@ -144,12 +146,42 @@ defmodule BotArmyPara.ParaFs do
   end
 
   defp write(target, content, :append) do
-    with :ok <- File.mkdir_p(Path.dirname(target)),
-         :ok <- File.write(target, content, [:append, :binary]) do
+    with {:ok, parent} <- ensure_parent_dir(target),
+         :ok <- File.write(target, content, [:append, :binary]),
+         :ok <- apply_ownership(parent),
+         :ok <- apply_ownership(target) do
       :ok
     else
       {:error, reason} ->
         {:error, "file append failed: #{format_file_reason(reason)}", :io_error}
+    end
+  end
+
+  defp ensure_parent_dir(target) do
+    parent = Path.dirname(target)
+    File.mkdir_p(parent)
+    {:ok, parent}
+  end
+
+  defp apply_ownership(path) do
+    case ownership_ids() do
+      {:ok, uid, gid} ->
+        case File.chown(path, uid, gid) do
+          :ok -> :ok
+          {:error, reason} -> {:error, reason}
+        end
+
+      :skip ->
+        :ok
+    end
+  end
+
+  defp ownership_ids do
+    with {uid, ""} <- Integer.parse(System.get_env("PARA_FS_OWNER_UID") || ""),
+         {gid, ""} <- Integer.parse(System.get_env("PARA_FS_OWNER_GID") || "") do
+      {:ok, uid, gid}
+    else
+      _ -> :skip
     end
   end
 
