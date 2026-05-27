@@ -80,7 +80,8 @@ defmodule BotArmyPara.NATS.Consumer do
           ])
 
         # Register subjects for runtime discovery and refresh before stale timeout.
-        Registry.register(@registry_bot_name, @subjects, @version)
+        deployment_status = Application.get_env(:bot_army_para, :deployment_status, "deployed")
+        Registry.register(@registry_bot_name, @subjects, @version, deployment_status)
         Process.send_after(self(), :registry_heartbeat, @registry_heartbeat_ms)
 
         {:noreply,
