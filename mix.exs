@@ -12,11 +12,6 @@ defmodule BotArmyPara.MixProject do
         para_bot: [
           applications: [bot_army_para: :permanent]
         ]
-      ],
-      dialyzer: [
-        ignore_warnings: [
-          "lib/bot_army_para/nats/consumer.ex:102:call_to_missing"
-        ]
       ]
     ]
   end
