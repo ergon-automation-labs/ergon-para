@@ -7,7 +7,10 @@
       name: "default",
       files: %{
         included: ["lib/", "test/"],
-        excluded: []
+        excluded: [
+          "lib/bot_army_para/skills/example.ex",
+          "test/bot_army_para/example_test.exs"
+        ]
       },
       checks: [
         {Credo.Check.Design.AliasUsage, false},
