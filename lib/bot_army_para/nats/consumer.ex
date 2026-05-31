@@ -80,6 +80,7 @@ defmodule BotArmyPara.NATS.Consumer do
   end
 
   @impl true
+  @dialyzer {:no_missing_calls, handle_continue: 2}
   def handle_continue(:connect, state) do
     case GenServer.call(Connection, :get_connection, 5000) do
       {:ok, conn} ->
