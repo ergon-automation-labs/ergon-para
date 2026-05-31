@@ -14,7 +14,9 @@ defmodule BotArmyPara.MixProject do
         ]
       ],
       dialyzer: [
-        ignore_warnings: ".dialyzerignore"
+        ignore_warnings: [
+          "lib/bot_army_para/nats/consumer.ex:102:call_to_missing"
+        ]
       ]
     ]
   end
