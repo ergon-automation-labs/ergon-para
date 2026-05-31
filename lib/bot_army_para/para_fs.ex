@@ -218,26 +218,8 @@ defmodule BotArmyPara.ParaFs do
     {:ok, parent}
   end
 
-  defp apply_ownership(path) do
-    case ownership_ids() do
-      {:ok, uid, gid} ->
-        case File.chown(path, {uid, gid}) do
-          :ok -> :ok
-          {:error, reason} -> {:error, reason}
-        end
-
-      :skip ->
-        :ok
-    end
-  end
-
-  defp ownership_ids do
-    with {uid, ""} <- Integer.parse(System.get_env("PARA_FS_OWNER_UID") || ""),
-         {gid, ""} <- Integer.parse(System.get_env("PARA_FS_OWNER_GID") || "") do
-      {:ok, uid, gid}
-    else
-      _ -> :skip
-    end
+  defp apply_ownership(_path) do
+    :ok
   end
 
   defp format_file_reason(reason), do: :file.format_error(reason)
