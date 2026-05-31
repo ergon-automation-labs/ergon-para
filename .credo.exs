@@ -10,7 +10,8 @@
         excluded: []
       },
       checks: [
-        {Credo.Check.Design.AliasUsage, false}
+        {Credo.Check.Design.AliasUsage, false},
+        {Credo.Check.Refactor.CaseTrivialMatches, false}
       ]
     }
   ]
