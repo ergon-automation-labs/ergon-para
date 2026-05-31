@@ -287,29 +287,28 @@ defmodule BotArmyPara.ParaFs do
       {:ok, names} ->
         paths =
           names
-          |> Enum.flat_map(fn name ->
-            full_path = Path.join(dir, name)
-            rel_path = Path.join(prefix, name)
-
-            case File.ls(full_path) do
-              {:ok, _} ->
-                [
-                  rel_path
-                  | if(recursive,
-                      do: elem(list_dir_recursive(full_path, true, rel_path), 1),
-                      else: []
-                    )
-                ]
-
-              :error ->
-                [rel_path]
-            end
-          end)
+          |> Enum.flat_map(&process_entry(dir, &1, recursive, prefix))
 
         {:ok, paths}
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  defp process_entry(dir, name, recursive, prefix) do
+    full_path = Path.join(dir, name)
+    rel_path = Path.join(prefix, name)
+
+    case File.ls(full_path) do
+      {:ok, _} ->
+        case list_dir_recursive(full_path, recursive, rel_path) do
+          {:ok, children} -> [rel_path | if(recursive, do: children, else: [])]
+          :error -> [rel_path]
+        end
+
+      :error ->
+        [rel_path]
     end
   end
 
@@ -358,10 +357,10 @@ defmodule BotArmyPara.ParaFs do
       {:ok, all_paths} ->
         matches =
           all_paths
-          |> Enum.filter(&path_matches_scope?(&1, scope))
-          |> Enum.filter(
-            &filename_or_content_matches?(&1, para_root, query, pattern, search_content)
-          )
+          |> Enum.filter(fn path ->
+            path_matches_scope?(path, scope) &&
+              filename_or_content_matches?(path, para_root, query, pattern, search_content)
+          end)
           |> Enum.map(&build_match(&1, para_root, query))
 
         {:ok, Enum.take(matches, 100)}
