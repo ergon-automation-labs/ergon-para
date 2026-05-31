@@ -304,10 +304,10 @@ defmodule BotArmyPara.ParaFs do
       {:ok, _} ->
         case list_dir_recursive(full_path, recursive, rel_path) do
           {:ok, children} -> [rel_path | if(recursive, do: children, else: [])]
-          :error -> [rel_path]
+          {:error, _} -> [rel_path]
         end
 
-      :error ->
+      {:error, _} ->
         [rel_path]
     end
   end
@@ -326,7 +326,7 @@ defmodule BotArmyPara.ParaFs do
             "modified_at" => DateTime.from_unix!(stat.mtime)
           }
 
-        :error ->
+        {:error, _} ->
           nil
       end
     else
@@ -390,7 +390,7 @@ defmodule BotArmyPara.ParaFs do
       if search_content and File.regular?(Path.join(base_dir, path)) do
         case File.read(Path.join(base_dir, path)) do
           {:ok, content} -> String.contains?(String.downcase(content), String.downcase(query))
-          :error -> false
+          {:error, _} -> false
         end
       else
         false
@@ -422,7 +422,7 @@ defmodule BotArmyPara.ParaFs do
           {:ok, content} ->
             extract_excerpt(content, query, 100)
 
-          :error ->
+          {:error, _} ->
             nil
         end
       else
