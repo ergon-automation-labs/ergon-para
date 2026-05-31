@@ -10,14 +10,7 @@
         excluded: []
       },
       checks: [
-        {Credo.Check.Design.AliasUsage, false},
-        {Credo.Check.Readability.ImplicitTry,
-         [
-           excluded_paths: [
-             "lib/bot_army_para/skills/example.ex",
-             "test/bot_army_para/example_test.exs"
-           ]
-         ]}
+        {Credo.Check.Design.AliasUsage, false}
       ]
     }
   ]
