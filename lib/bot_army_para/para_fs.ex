@@ -25,6 +25,61 @@ defmodule BotArmyPara.ParaFs do
 
   def handle_write(_), do: {:error, "request body must be an object", :validation_error}
 
+  @spec handle_read(payload()) :: {:ok, map()} | {:error, String.t(), atom()}
+  def handle_read(payload) when is_map(payload) do
+    with :ok <- validate_auth_token(payload),
+         {:ok, relative_path} <- normalize_relative_path(payload["relative_path"]),
+         {:ok, target} <- resolve_target(relative_path),
+         :ok <- validate_is_file(target),
+         {:ok, content} <- File.read(target) do
+      {:ok,
+       %{
+         "relative_path" => relative_path,
+         "content" => content,
+         "bytes_read" => byte_size(content),
+         "encoding" => "utf-8"
+       }}
+    else
+      {:error, reason} when is_atom(reason) ->
+        {:error, "cannot read file: #{format_file_reason(reason)}", :io_error}
+
+      err ->
+        err
+    end
+  end
+
+  def handle_read(_), do: {:error, "request body must be an object", :validation_error}
+
+  @spec handle_list(payload()) :: {:ok, map()} | {:error, String.t(), atom()}
+  def handle_list(payload) when is_map(payload) do
+    with :ok <- validate_auth_token(payload),
+         {:ok, relative_path} <- normalize_relative_path(payload["relative_path"]),
+         {:ok, target} <- resolve_target(relative_path),
+         :ok <- validate_is_dir(target),
+         {:ok, entries} <- list_directory(target, payload["recursive"] == true) do
+      {:ok, %{"entries" => entries}}
+    else
+      {:error, reason} when is_atom(reason) ->
+        {:error, "cannot list directory: #{format_file_reason(reason)}", :io_error}
+
+      err ->
+        err
+    end
+  end
+
+  def handle_list(_), do: {:error, "request body must be an object", :validation_error}
+
+  @spec handle_search(payload()) :: {:ok, map()} | {:error, String.t(), atom()}
+  def handle_search(payload) when is_map(payload) do
+    with :ok <- validate_auth_token(payload),
+         {:ok, query} <- extract_query(payload),
+         {:ok, matches} <- search_para(query) do
+      {:ok, %{"matches" => matches}}
+    end
+  end
+
+  def handle_search(_), do: {:error, "request body must be an object", :validation_error}
+
   def default_root do
     System.get_env("PARA_FS_ROOT") || Path.expand("~/Documents/personal_os")
   end
@@ -194,5 +249,167 @@ defmodule BotArmyPara.ParaFs do
       "bytes_written" => byte_size(content),
       "mode" => Atom.to_string(mode)
     }
+  end
+
+  defp validate_is_file(target) do
+    if File.regular?(target) do
+      :ok
+    else
+      {:error, "path is not a file", :validation_error}
+    end
+  end
+
+  defp validate_is_dir(target) do
+    if File.dir?(target) do
+      :ok
+    else
+      {:error, "path is not a directory", :validation_error}
+    end
+  end
+
+  defp list_directory(target, recursive) do
+    case File.ls_r(target) do
+      {:ok, all_paths} ->
+        entries =
+          all_paths
+          |> Enum.map(&build_entry(target, &1, recursive))
+          |> Enum.filter(& &1)
+
+        {:ok, entries}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp build_entry(base_dir, path, recursive) do
+    full_path = Path.join(base_dir, path)
+    depth = String.split(path, "/") |> length()
+
+    if recursive or depth <= 1 do
+      case File.stat(full_path) do
+        {:ok, stat} ->
+          %{
+            "name" => path,
+            "type" => if(File.dir?(full_path), do: "dir", else: "file"),
+            "size" => stat.size,
+            "modified_at" => DateTime.from_unix!(stat.mtime)
+          }
+
+        :error ->
+          nil
+      end
+    else
+      nil
+    end
+  end
+
+  defp extract_query(payload) do
+    case payload["query"] do
+      query when is_binary(query) and query != "" ->
+        {:ok,
+         %{
+           query: query,
+           pattern: payload["pattern"],
+           scope: payload["scope"],
+           search_content: payload["search_content"] != false
+         }}
+
+      _ ->
+        {:error, "query is required and must be non-empty", :validation_error}
+    end
+  end
+
+  defp search_para(%{query: query, pattern: pattern, scope: scope, search_content: search_content}) do
+    para_root = Path.expand(default_root())
+
+    case File.ls_r(para_root) do
+      {:ok, all_paths} ->
+        matches =
+          all_paths
+          |> Enum.filter(&path_matches_scope?(&1, scope))
+          |> Enum.filter(
+            &filename_or_content_matches?(&1, para_root, query, pattern, search_content)
+          )
+          |> Enum.map(&build_match(&1, para_root, query))
+
+        {:ok, Enum.take(matches, 100)}
+
+      {:error, reason} ->
+        {:error, "search failed: #{format_file_reason(reason)}", :io_error}
+    end
+  end
+
+  defp path_matches_scope?(_path, nil), do: true
+
+  defp path_matches_scope?(path, scope) do
+    String.starts_with?(path, scope <> "/")
+  end
+
+  defp filename_or_content_matches?(path, base_dir, query, pattern, search_content) do
+    filename_matches = String.contains?(Path.basename(path), query)
+
+    pattern_matches =
+      if pattern do
+        glob_matches(path, pattern)
+      else
+        true
+      end
+
+    content_matches =
+      if search_content and File.regular?(Path.join(base_dir, path)) do
+        case File.read(Path.join(base_dir, path)) do
+          {:ok, content} -> String.contains?(String.downcase(content), String.downcase(query))
+          :error -> false
+        end
+      else
+        false
+      end
+
+    (filename_matches or content_matches) and pattern_matches
+  end
+
+  defp glob_matches(filename, pattern) do
+    pattern
+    |> String.replace("*", ".*")
+    |> Regex.compile!()
+    |> Regex.match?(filename)
+  end
+
+  defp build_match(path, base_dir, query) do
+    full_path = Path.join(base_dir, path)
+
+    match_type =
+      cond do
+        String.contains?(Path.basename(path), query) -> "filename"
+        File.regular?(full_path) -> "content"
+        true -> "filename"
+      end
+
+    excerpt =
+      if match_type == "content" and File.regular?(full_path) do
+        case File.read(full_path) do
+          {:ok, content} ->
+            extract_excerpt(content, query, 100)
+
+          :error ->
+            nil
+        end
+      else
+        nil
+      end
+
+    %{
+      "path" => path,
+      "match_type" => match_type,
+      "excerpt" => excerpt
+    }
+  end
+
+  defp extract_excerpt(content, query, context_chars) do
+    case String.split(content, "\n") |> Enum.find(&String.contains?(&1, query)) do
+      nil -> nil
+      line -> String.slice(line, 0, context_chars)
+    end
   end
 end

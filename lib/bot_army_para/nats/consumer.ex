@@ -30,6 +30,21 @@ defmodule BotArmyPara.NATS.Consumer do
       description: "Write or append files under PARA_FS_ROOT with path guards"
     },
     %{
+      subject: "para.fs.read",
+      type: :request_reply,
+      description: "Read file content from PARA_FS_ROOT"
+    },
+    %{
+      subject: "para.fs.list",
+      type: :request_reply,
+      description: "List directory contents under PARA_FS_ROOT"
+    },
+    %{
+      subject: "para.fs.search",
+      type: :request_reply,
+      description: "Search files by name or content under PARA_FS_ROOT"
+    },
+    %{
       subject: "para.capture.append",
       type: :request_reply,
       description: "Append a timestamped bot note into inbox/bots/<source>.md"
@@ -74,6 +89,9 @@ defmodule BotArmyPara.NATS.Consumer do
         subscriptions =
           subscribe_subjects(conn, [
             "para.fs.write",
+            "para.fs.read",
+            "para.fs.list",
+            "para.fs.search",
             "para.capture.append",
             "para.note.route",
             "para.digest.generate"
@@ -177,6 +195,15 @@ defmodule BotArmyPara.NATS.Consumer do
   defp handle_request(%{topic: "para.fs.write"} = msg, state),
     do: handle_para_fs_write(msg, state)
 
+  defp handle_request(%{topic: "para.fs.read"} = msg, state),
+    do: handle_para_fs_read(msg, state)
+
+  defp handle_request(%{topic: "para.fs.list"} = msg, state),
+    do: handle_para_fs_list(msg, state)
+
+  defp handle_request(%{topic: "para.fs.search"} = msg, state),
+    do: handle_para_fs_search(msg, state)
+
   defp handle_request(%{topic: "para.capture.append"} = msg, state),
     do: handle_para_capture_append(msg, state)
 
@@ -204,6 +231,60 @@ defmodule BotArmyPara.NATS.Consumer do
     response =
       with {:ok, payload} <- decode_request_body(msg.body),
            {:ok, data} <- ParaFs.handle_write(payload) do
+        Reply.ok(data)
+      else
+        {:error, message, code} ->
+          Reply.error(message, code)
+
+        {:error, :invalid_json} ->
+          Reply.error("invalid JSON", :validation_error)
+      end
+
+    if state.conn do
+      Gnat.pub(state.conn, msg.reply_to, response)
+    end
+  end
+
+  defp handle_para_fs_read(msg, state) do
+    response =
+      with {:ok, payload} <- decode_request_body(msg.body),
+           {:ok, data} <- ParaFs.handle_read(payload) do
+        Reply.ok(data)
+      else
+        {:error, message, code} ->
+          Reply.error(message, code)
+
+        {:error, :invalid_json} ->
+          Reply.error("invalid JSON", :validation_error)
+      end
+
+    if state.conn do
+      Gnat.pub(state.conn, msg.reply_to, response)
+    end
+  end
+
+  defp handle_para_fs_list(msg, state) do
+    response =
+      with {:ok, payload} <- decode_request_body(msg.body),
+           {:ok, data} <- ParaFs.handle_list(payload) do
+        Reply.ok(data)
+      else
+        {:error, message, code} ->
+          Reply.error(message, code)
+
+        {:error, :invalid_json} ->
+          Reply.error("invalid JSON", :validation_error)
+      end
+
+    if state.conn do
+      Gnat.pub(state.conn, msg.reply_to, response)
+    end
+  end
+
+  defp handle_para_fs_search(msg, state) do
+    response =
+      with {:ok, payload} <- decode_request_body(msg.body),
+           {:ok, data} <- ParaFs.handle_search(payload) do
         Reply.ok(data)
       else
         {:error, message, code} ->
