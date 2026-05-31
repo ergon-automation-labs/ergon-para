@@ -10,15 +10,7 @@
         excluded: []
       },
       checks: [
-        {Credo.Check.Design.AliasUsage,
-         [
-           excluded_paths: [
-             "lib/bot_army_para/pulse_publisher.ex",
-             "lib/bot_army_para/para_notes.ex",
-             "test/bot_army_para/para_fs_test.exs",
-             "test/bot_army_para/para_notes_test.exs"
-           ]
-         ]},
+        {Credo.Check.Design.AliasUsage, false},
         {Credo.Check.Readability.ImplicitTry,
          [
            excluded_paths: [
