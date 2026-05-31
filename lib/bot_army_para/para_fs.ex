@@ -221,7 +221,7 @@ defmodule BotArmyPara.ParaFs do
   defp apply_ownership(path) do
     case ownership_ids() do
       {:ok, uid, gid} ->
-        case File.chown(path, uid, gid) do
+        case File.chown(path, {uid, gid}) do
           :ok -> :ok
           {:error, reason} -> {:error, reason}
         end
@@ -268,14 +268,45 @@ defmodule BotArmyPara.ParaFs do
   end
 
   defp list_directory(target, recursive) do
-    case File.ls_r(target) do
-      {:ok, all_paths} ->
+    case list_dir_recursive(target, recursive) do
+      {:ok, paths} ->
         entries =
-          all_paths
+          paths
           |> Enum.map(&build_entry(target, &1, recursive))
           |> Enum.filter(& &1)
 
         {:ok, entries}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp list_dir_recursive(dir, recursive, prefix \\ "") do
+    case File.ls(dir) do
+      {:ok, names} ->
+        paths =
+          names
+          |> Enum.flat_map(fn name ->
+            full_path = Path.join(dir, name)
+            rel_path = Path.join(prefix, name)
+
+            case File.ls(full_path) do
+              {:ok, _} ->
+                [
+                  rel_path
+                  | if(recursive,
+                      do: elem(list_dir_recursive(full_path, true, rel_path), 1),
+                      else: []
+                    )
+                ]
+
+              :error ->
+                [rel_path]
+            end
+          end)
+
+        {:ok, paths}
 
       {:error, reason} ->
         {:error, reason}
@@ -323,7 +354,7 @@ defmodule BotArmyPara.ParaFs do
   defp search_para(%{query: query, pattern: pattern, scope: scope, search_content: search_content}) do
     para_root = Path.expand(default_root())
 
-    case File.ls_r(para_root) do
+    case list_dir_recursive(para_root, true) do
       {:ok, all_paths} ->
         matches =
           all_paths
