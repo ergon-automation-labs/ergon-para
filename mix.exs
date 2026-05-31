@@ -12,6 +12,9 @@ defmodule BotArmyPara.MixProject do
         para_bot: [
           applications: [bot_army_para: :permanent]
         ]
+      ],
+      dialyzer: [
+        ignore_warnings: ".dialyzerignore"
       ]
     ]
   end
