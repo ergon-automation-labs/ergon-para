@@ -31,7 +31,7 @@ defmodule BotArmyPara.ParaFs do
          {:ok, relative_path} <- normalize_relative_path(payload["relative_path"]),
          {:ok, target} <- resolve_target(relative_path),
          :ok <- validate_is_file(target),
-         {:ok, content} <- File.read(target) do
+         {:ok, content} <- read_with_retry(target) do
       {:ok,
        %{
          "relative_path" => relative_path,
@@ -220,6 +220,23 @@ defmodule BotArmyPara.ParaFs do
 
   defp apply_ownership(_path) do
     :ok
+  end
+
+  defp read_with_retry(target, attempts \\ 3, backoff_ms \\ 10)
+  defp read_with_retry(_target, 0, _backoff_ms), do: {:error, :eagain}
+
+  defp read_with_retry(target, attempts, backoff_ms) do
+    case File.read(target) do
+      {:ok, content} ->
+        {:ok, content}
+
+      {:error, :eagain} ->
+        Process.sleep(backoff_ms)
+        read_with_retry(target, attempts - 1, backoff_ms * 2)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   defp format_file_reason(reason), do: :file.format_error(reason)
