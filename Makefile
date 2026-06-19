@@ -1,7 +1,7 @@
 SCRIPTS_DIRECTORY ?= $(abspath $(CURDIR)/../scripts)
 MIX ?= /Users/abby/.local/share/mise/shims/mix
 
-.PHONY: setup help deps test credo dialyzer coverage check format clean release publish-release setup-hooks setup-db reset-db logs push-and-publish
+.PHONY: setup help deps test credo dialyzer coverage check format clean release publish-release setup-hooks setup-db reset-db logs push-and-publish deploy-bot
 
 help:
 	@echo "Para Bot"
@@ -137,3 +137,9 @@ push-and-publish:
 
 logs:
 	@$(SCRIPTS_DIRECTORY)/tail_bot_log.sh
+
+## Deploy bot via bot_army_infra (called by: make deploy-bot BOT=para from monorepo)
+## This target is invoked by bot_army_infra's deploy-bot target
+deploy-bot: publish-release
+	@echo "✓ Deploy-bot complete: GitHub release published"
+	@echo "  Infra will now handle: sync → apply Salt state → restart"
