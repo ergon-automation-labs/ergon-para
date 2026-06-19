@@ -58,6 +58,11 @@ defmodule BotArmyPara.NATS.Consumer do
       subject: "para.digest.generate",
       type: :request_reply,
       description: "Generate digest markdown from selected PARA files"
+    },
+    %{
+      subject: "para.system.config",
+      type: :request_reply,
+      description: "Return PARA system configuration including root directory"
     }
   ]
 
@@ -95,7 +100,8 @@ defmodule BotArmyPara.NATS.Consumer do
             "para.fs.search",
             "para.capture.append",
             "para.note.route",
-            "para.digest.generate"
+            "para.digest.generate",
+            "para.system.config"
           ])
 
         # Register subjects for runtime discovery and refresh before stale timeout.
@@ -213,6 +219,9 @@ defmodule BotArmyPara.NATS.Consumer do
 
   defp handle_request(%{topic: "para.digest.generate"} = msg, state),
     do: handle_para_digest_generate(msg, state)
+
+  defp handle_request(%{topic: "para.system.config"} = msg, state),
+    do: handle_para_system_config(msg, state)
 
   defp handle_request(%{topic: topic}, _state),
     do: Logger.debug("Unknown request/reply subject: #{topic}")
@@ -335,6 +344,18 @@ defmodule BotArmyPara.NATS.Consumer do
         {:error, message, code} -> Reply.error(message, code)
         {:error, :invalid_json} -> Reply.error("invalid JSON", :validation_error)
       end
+
+    if state.conn, do: Gnat.pub(state.conn, msg.reply_to, response)
+  end
+
+  defp handle_para_system_config(msg, state) do
+    response =
+      Reply.ok(%{
+        "root_directory" =>
+          System.get_env("PARA_FS_ROOT") || Path.expand("~/Documents/personal_os"),
+        "version" => @version,
+        "available_subjects" => Enum.map(@subjects, & &1.subject)
+      })
 
     if state.conn, do: Gnat.pub(state.conn, msg.reply_to, response)
   end
