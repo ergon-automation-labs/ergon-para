@@ -352,20 +352,77 @@ defmodule BotArmyPara.ParaFs do
   defp search_para(%{query: query, pattern: pattern, scope: scope, search_content: search_content}) do
     para_root = Path.expand(default_root())
 
-    case list_dir_recursive(para_root, true) do
-      {:ok, all_paths} ->
-        matches =
-          all_paths
-          |> Enum.filter(fn path ->
-            path_matches_scope?(path, scope) &&
-              filename_or_content_matches?(path, para_root, query, pattern, search_content)
+    # Lazy search: walk filesystem and filter as we go, limiting to 100 matches
+    # This prevents blocking when filesystem is large
+    matches =
+      search_lazy(para_root, query, pattern, scope, search_content, para_root, [])
+      |> Enum.take(100)
+
+    {:ok, matches}
+  end
+
+  # Lazy recursive search that yields matches as found
+  defp search_lazy(_dir, _query, _pattern, _scope, _search_content, _para_root, matches)
+       when length(matches) >= 100 do
+    matches
+  end
+
+  defp search_lazy(dir, query, pattern, scope, search_content, para_root, matches) do
+    case File.ls(dir) do
+      {:ok, names} ->
+        new_matches =
+          names
+          |> Enum.flat_map(fn name ->
+            full_path = Path.join(dir, name)
+            rel_path = String.replace_leading(full_path, para_root <> "/", "")
+
+            # Check if this entry matches
+            if path_matches_scope?(rel_path, scope) &&
+                 filename_or_content_matches?(
+                   full_path,
+                   para_root,
+                   query,
+                   pattern,
+                   search_content
+                 ) do
+              [build_match(full_path, para_root, query)]
+            else
+              []
+            end
           end)
-          |> Enum.map(&build_match(&1, para_root, query))
 
-        {:ok, Enum.take(matches, 100)}
+        # Recurse into subdirectories if we haven't reached limit
+        accumulated = matches ++ new_matches
 
-      {:error, reason} ->
-        {:error, "search failed: #{format_file_reason(reason)}", :io_error}
+        if length(accumulated) >= 100 do
+          accumulated
+        else
+          names
+          |> Enum.filter(fn name ->
+            case File.ls(Path.join(dir, name)) do
+              {:ok, _} -> true
+              :error -> false
+            end
+          end)
+          |> Enum.reduce(accumulated, fn name, acc ->
+            if length(acc) >= 100 do
+              acc
+            else
+              search_lazy(
+                Path.join(dir, name),
+                query,
+                pattern,
+                scope,
+                search_content,
+                para_root,
+                acc
+              )
+            end
+          end)
+        end
+
+      {:error, _reason} ->
+        matches
     end
   end
 
