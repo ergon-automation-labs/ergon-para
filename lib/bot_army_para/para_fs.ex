@@ -371,58 +371,51 @@ defmodule BotArmyPara.ParaFs do
     case File.ls(dir) do
       {:ok, names} ->
         new_matches =
-          names
-          |> Enum.flat_map(fn name ->
-            full_path = Path.join(dir, name)
-            rel_path = String.replace_leading(full_path, para_root <> "/", "")
+          collect_file_matches(names, dir, para_root, query, pattern, scope, search_content)
 
-            # Check if this entry matches
-            if path_matches_scope?(rel_path, scope) &&
-                 filename_or_content_matches?(
-                   full_path,
-                   para_root,
-                   query,
-                   pattern,
-                   search_content
-                 ) do
-              [build_match(full_path, para_root, query)]
-            else
-              []
-            end
-          end)
-
-        # Recurse into subdirectories if we haven't reached limit
         accumulated = matches ++ new_matches
-
-        if length(accumulated) >= 100 do
-          accumulated
-        else
-          names
-          |> Enum.filter(fn name ->
-            case File.ls(Path.join(dir, name)) do
-              {:ok, _} -> true
-              :error -> false
-            end
-          end)
-          |> Enum.reduce(accumulated, fn name, acc ->
-            if length(acc) >= 100 do
-              acc
-            else
-              search_lazy(
-                Path.join(dir, name),
-                query,
-                pattern,
-                scope,
-                search_content,
-                para_root,
-                acc
-              )
-            end
-          end)
-        end
+        recurse_subdirs(names, dir, query, pattern, scope, search_content, para_root, accumulated)
 
       {:error, _reason} ->
         matches
+    end
+  end
+
+  defp collect_file_matches(names, dir, para_root, query, pattern, scope, search_content) do
+    names
+    |> Enum.flat_map(fn name ->
+      full_path = Path.join(dir, name)
+      rel_path = String.replace_leading(full_path, para_root <> "/", "")
+
+      if path_matches_scope?(rel_path, scope) &&
+           filename_or_content_matches?(full_path, para_root, query, pattern, search_content) do
+        [build_match(full_path, para_root, query)]
+      else
+        []
+      end
+    end)
+  end
+
+  defp recurse_subdirs(names, dir, query, pattern, scope, search_content, para_root, accumulated) do
+    if length(accumulated) >= 100 do
+      accumulated
+    else
+      subdirs = Enum.filter(names, fn name -> dir_exists?(Path.join(dir, name)) end)
+
+      Enum.reduce(subdirs, accumulated, fn name, acc ->
+        if length(acc) >= 100 do
+          acc
+        else
+          search_lazy(Path.join(dir, name), query, pattern, scope, search_content, para_root, acc)
+        end
+      end)
+    end
+  end
+
+  defp dir_exists?(path) do
+    case File.ls(path) do
+      {:ok, _} -> true
+      :error -> false
     end
   end
 
