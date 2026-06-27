@@ -396,20 +396,26 @@ defmodule BotArmyPara.ParaFs do
     end)
   end
 
-  defp recurse_subdirs(names, dir, query, pattern, scope, search_content, para_root, accumulated) do
-    if length(accumulated) >= 100 do
-      accumulated
-    else
-      subdirs = Enum.filter(names, fn name -> dir_exists?(Path.join(dir, name)) end)
+  defp recurse_subdirs(names, dir, query, pattern, scope, search_content, para_root, accumulated)
+       when length(accumulated) >= 100 do
+    accumulated
+  end
 
-      Enum.reduce(subdirs, accumulated, fn name, acc ->
-        if length(acc) >= 100 do
-          acc
-        else
-          search_lazy(Path.join(dir, name), query, pattern, scope, search_content, para_root, acc)
-        end
-      end)
-    end
+  defp recurse_subdirs(names, dir, query, pattern, scope, search_content, para_root, accumulated) do
+    subdirs = Enum.filter(names, fn name -> dir_exists?(Path.join(dir, name)) end)
+
+    Enum.reduce(subdirs, accumulated, fn name, acc ->
+      recurse_if_needed(name, dir, query, pattern, scope, search_content, para_root, acc)
+    end)
+  end
+
+  defp recurse_if_needed(_name, _dir, _query, _pattern, _scope, _search_content, _para_root, acc)
+       when length(acc) >= 100 do
+    acc
+  end
+
+  defp recurse_if_needed(name, dir, query, pattern, scope, search_content, para_root, acc) do
+    search_lazy(Path.join(dir, name), query, pattern, scope, search_content, para_root, acc)
   end
 
   defp dir_exists?(path) do
