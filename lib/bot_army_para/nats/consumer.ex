@@ -220,12 +220,8 @@ defmodule BotArmyPara.NATS.Consumer do
   defp handle_request(%{topic: "para.digest.generate"} = msg, state),
     do: handle_para_digest_generate(msg, state)
 
-  defp handle_request(%{topic: "para.system.config"} = msg, state) do
-    Logger.debug("=== para.system.config request received ===")
-    Logger.debug("msg.reply_to: #{inspect(msg.reply_to)}")
-    Logger.debug("state.conn: #{inspect(state.conn != nil)}")
-    handle_para_system_config(msg, state)
-  end
+  defp handle_request(%{topic: "para.system.config"} = msg, state),
+    do: handle_para_system_config(msg, state)
 
   defp handle_request(%{topic: topic}, _state),
     do: Logger.debug("Unknown request/reply subject: #{topic}")
@@ -361,13 +357,7 @@ defmodule BotArmyPara.NATS.Consumer do
         "available_subjects" => Enum.map(@subjects, & &1.subject)
       })
 
-    Logger.debug("para.system.config handler called, response: #{inspect(response)}")
-
-    if state.conn do
-      Logger.debug("Publishing response to #{msg.reply_to}")
-      result = Gnat.pub(state.conn, msg.reply_to, response)
-      Logger.debug("Gnat.pub result: #{inspect(result)}")
-    end
+    if state.conn, do: Gnat.pub(state.conn, msg.reply_to, response)
   end
 
   defp decode_request_body(body) when is_binary(body) do
