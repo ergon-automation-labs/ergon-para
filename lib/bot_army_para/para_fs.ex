@@ -421,7 +421,7 @@ defmodule BotArmyPara.ParaFs do
   defp dir_exists?(path) do
     case File.ls(path) do
       {:ok, _} -> true
-      :error -> false
+      {:error, _} -> false
     end
   end
 
