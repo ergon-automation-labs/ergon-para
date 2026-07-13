@@ -415,6 +415,8 @@ defmodule BotArmyPara.ParaFs do
   end
 
   defp recurse_if_needed(name, dir, query, pattern, scope, search_content, para_root, acc) do
+    if String.starts_with?(name, "."), do: return(acc)
+
     search_lazy(Path.join(dir, name), query, pattern, scope, search_content, para_root, acc)
   end
 
@@ -498,3 +500,7 @@ defmodule BotArmyPara.ParaFs do
     end
   end
 end
+
+  defp skip_hidden_dir?(name) do
+    String.starts_with?(name, ".")
+  end
