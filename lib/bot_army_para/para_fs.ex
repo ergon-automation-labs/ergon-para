@@ -414,6 +414,9 @@ defmodule BotArmyPara.ParaFs do
     acc
   end
 
+  defp recurse_if_needed("." <> _rest, _dir, _query, _pattern, _scope, _search_content, _para_root, acc), do: acc
+
+
   defp recurse_if_needed(name, dir, query, pattern, scope, search_content, para_root, acc) do
     search_lazy(Path.join(dir, name), query, pattern, scope, search_content, para_root, acc)
   end
