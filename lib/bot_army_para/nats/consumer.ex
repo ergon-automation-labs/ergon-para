@@ -63,6 +63,12 @@ defmodule BotArmyPara.NATS.Consumer do
       subject: "para.system.config",
       type: :request_reply,
       description: "Return PARA system configuration including root directory"
+    },
+    %{
+      subject: "para.auth.get_write_token",
+      type: :request_reply,
+      description:
+        "Retrieve PARA write token for authenticated operations (bootstrap endpoint, no auth required)"
     }
   ]
 
@@ -101,7 +107,8 @@ defmodule BotArmyPara.NATS.Consumer do
             "para.capture.append",
             "para.note.route",
             "para.digest.generate",
-            "para.system.config"
+            "para.system.config",
+            "para.auth.get_write_token"
           ])
 
         # Register subjects for runtime discovery and refresh before stale timeout.
@@ -222,6 +229,9 @@ defmodule BotArmyPara.NATS.Consumer do
 
   defp handle_request(%{topic: "para.system.config"} = msg, state),
     do: handle_para_system_config(msg, state)
+
+  defp handle_request(%{topic: "para.auth.get_write_token"} = msg, state),
+    do: handle_para_auth_get_write_token(msg, state)
 
   defp handle_request(%{topic: topic}, _state),
     do: Logger.debug("Unknown request/reply subject: #{topic}")
@@ -356,6 +366,22 @@ defmodule BotArmyPara.NATS.Consumer do
         "version" => @version,
         "available_subjects" => Enum.map(@subjects, & &1.subject)
       })
+
+    if state.conn, do: Gnat.pub(state.conn, msg.reply_to, response)
+  end
+
+  defp handle_para_auth_get_write_token(msg, state) do
+    response =
+      case System.get_env("PARA_FS_WRITE_TOKEN") do
+        token when is_binary(token) and byte_size(token) > 0 ->
+          Reply.ok(%{
+            "write_token" => token,
+            "expires_at" => nil
+          })
+
+        _ ->
+          Reply.error("write token not configured", :no_auth_token)
+      end
 
     if state.conn, do: Gnat.pub(state.conn, msg.reply_to, response)
   end
