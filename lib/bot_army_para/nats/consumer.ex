@@ -376,11 +376,17 @@ defmodule BotArmyPara.NATS.Consumer do
         token when is_binary(token) and byte_size(token) > 0 ->
           Reply.ok(%{
             "write_token" => token,
-            "expires_at" => nil
+            "expires_at" => nil,
+            "auth_required" => true,
+            "token_length" => byte_size(token)
           })
 
         _ ->
-          Reply.error("write token not configured", :no_auth_token)
+          Reply.ok(%{
+            "auth_required" => false,
+            "write_token" => nil,
+            "message" => "No write token configured - all operations are public"
+          })
       end
 
     if state.conn, do: Gnat.pub(state.conn, msg.reply_to, response)
