@@ -95,9 +95,10 @@ defmodule BotArmyPara.ParaFs do
         :ok
 
       token when token != "" ->
-        provided_token = to_string(payload["auth_token"] || "")
+        provided_token = to_string(payload["auth_token"] || "") |> String.trim()
+        config_token = String.trim(token)
 
-        if provided_token == token do
+        if provided_token == config_token do
           :ok
         else
           {:error, "auth_token missing or invalid", :forbidden}
