@@ -90,9 +90,8 @@ defmodule BotArmyPara.ParaFs do
     do: {:error, ~s(schema_version must be "1.0"), :validation_error}
 
   defp validate_auth_token(_payload) do
-    # FIXME: Token validation was failing even with correct token.
-    # Para.auth.get_write_token endpoint works & returns actual token.
-    # Disabled validation for now - re-enable after debugging env var issue.
+    # Token validation disabled: Para.auth.get_write_token works & returns actual token.
+    # Re-enable after debugging why env var comparison was failing.
     :ok
   end
 
