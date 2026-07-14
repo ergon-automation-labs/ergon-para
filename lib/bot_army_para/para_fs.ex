@@ -91,17 +91,17 @@ defmodule BotArmyPara.ParaFs do
 
   defp validate_auth_token(payload) do
     case System.get_env("PARA_FS_WRITE_TOKEN") do
-      token when is_binary(token) and byte_size(token) > 0 ->
-        provided_token = to_string(payload["auth_token"])
+      nil ->
+        :ok
+
+      token when token != "" ->
+        provided_token = to_string(payload["auth_token"] || "")
 
         if provided_token == token do
           :ok
         else
           {:error, "auth_token missing or invalid", :forbidden}
         end
-
-      nil ->
-        :ok
 
       _ ->
         :ok
