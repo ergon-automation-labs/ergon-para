@@ -6,16 +6,16 @@ defmodule BotArmyPara.NATS.Consumer do
   Uses standardized Reply format for request/reply patterns.
 
   All request/reply handlers should return responses using Reply helpers:
-  - BotArmyRuntime.NATS.Reply.ok(data) for success
-  - BotArmyRuntime.NATS.Reply.error(message, code) for errors
+  - BotArmyLibraryRuntime.NATS.Reply.ok(data) for success
+  - BotArmyLibraryRuntime.NATS.Reply.error(message, code) for errors
   """
 
   use GenServer
   require Logger
-  alias BotArmyCore.NATS.Decoder
+  alias BotArmyLibraryCore.NATS.Decoder
   alias BotArmyPara.{ParaFs, ParaNotes}
-  alias BotArmyRuntime.NATS.{Connection, Reply}
-  alias BotArmyRuntime.{Registry, Tracing}
+  alias BotArmyLibraryRuntime.NATS.{Connection, Reply}
+  alias BotArmyLibraryRuntime.{Registry, Tracing}
 
   @reconnect_delay_ms 5000
   @registry_heartbeat_ms 20_000
