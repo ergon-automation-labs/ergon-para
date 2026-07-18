@@ -1,7 +1,7 @@
 SCRIPTS_DIRECTORY ?= $(abspath $(CURDIR)/../scripts)
 MIX ?= /Users/abby/.local/share/mise/shims/mix
 
-.PHONY: setup help deps test credo dialyzer coverage check format clean release publish-release setup-hooks setup-db reset-db logs git-push pre-push-cleanup push-and-publish deploy-bot
+.PHONY: setup help deps test credo dialyzer coverage check format clean release publish-release setup-hooks setup-db reset-db logs git-push pre-push-cleanup push-and-publish deploy-bot bump-version
 
 help:
 	@echo "Para Bot"
@@ -186,3 +186,10 @@ logs:
 deploy-bot: publish-release
 	@echo "✓ Deploy-bot complete: GitHub release published"
 	@echo "  Infra will now handle: sync → apply Salt state → restart"
+
+bump-version:
+	@if [ -z "$(BUMP)" ]; then echo "Usage: make bump-version BUMP=major|minor|patch"; exit 1; fi
+	@OLD=$$(grep 'version:' mix.exs | head -1 | sed -E 's/.*version: "([^"]+)".*/\1/'); \
+	bash $(SCRIPTS_DIRECTORY)/bump_version.sh mix.exs $(BUMP) > /dev/null; \
+	NEW=$$(grep 'version:' mix.exs | head -1 | sed -E 's/.*version: "([^"]+)".*/\1/'); \
+	echo "✓ Bumped: $$OLD → $$NEW"
