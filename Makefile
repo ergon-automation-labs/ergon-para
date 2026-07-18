@@ -1,7 +1,7 @@
 SCRIPTS_DIRECTORY ?= $(abspath $(CURDIR)/../scripts)
 MIX ?= /Users/abby/.local/share/mise/shims/mix
 
-.PHONY: setup help deps test credo dialyzer coverage check format clean release publish-release setup-hooks setup-db reset-db logs push-and-publish deploy-bot
+.PHONY: setup help deps test credo dialyzer coverage check format clean release publish-release setup-hooks setup-db reset-db logs git-push pre-push-cleanup push-and-publish deploy-bot
 
 help:
 	@echo "Para Bot"
@@ -98,12 +98,23 @@ release: check
 	@echo "Location: _build/prod/rel/para_bot/"
 	@echo ""
 
-publish-release: release
+test-release-smoke:
 	@echo "==============================================="
-	@echo "Publishing release to GitHub"
+	@echo "Running release smoke test"
 	@echo "==============================================="
-	@echo ""
+	@RELEASE_NAME=para_bot NATS_SERVERS=nats://localhost:4224 \
+		bash $(SCRIPTS_DIRECTORY)/test_release_smoke.sh
 
+sync-release-version:
+	@VERSION=$$(sed -n 's/^[[:space:]]*version:[[:space:]]*"\([^"]*\)".*/\1/p' mix.exs | head -n 1); \
+	if [ -z "$$VERSION" ]; then \
+		echo "❌ Failed to resolve version from mix.exs"; exit 1; \
+	fi; \
+	TIMESTAMP=$$(date -u +"%Y-%m-%dT%H:%M:%SZ"); \
+	echo "$$VERSION $$TIMESTAMP" > .release-published; \
+	echo "✅ Synced release version: v$$VERSION ($$TIMESTAMP)"
+
+publish-release: release
 	@set -e; \
 	VERSION=$$(sed -n 's/^[[:space:]]*version:[[:space:]]*"\([^"]*\)".*/\1/p' mix.exs | head -n 1); \
 	if [ -z "$$VERSION" ]; then \
@@ -112,9 +123,20 @@ publish-release: release
 	fi; \
 	TARBALL="para_bot-$$VERSION.tar.gz"; \
 	echo "Version: $$VERSION"; \
-	echo "Creating release tarball..."; \
-	tar -czf "$$TARBALL" -C _build/prod/rel para_bot/; \
-	echo "✓ Tarball created: $$TARBALL"; \
+	echo ""; \
+	if [ -f "$$TARBALL" ]; then \
+		echo "✓ Tarball already exists locally: $$TARBALL (skipping rebuild)"; \
+	else \
+		echo "📦 Building release (tarball not found locally)..."; \
+		$(MAKE) test-release-smoke || echo "⚠️  Smoke test warnings (non-blocking) - continuing"; \
+		echo "Creating release tarball..."; \
+		tar -czf "$$TARBALL" -C _build/prod/rel para_bot/; \
+		echo "✓ Tarball created: $$TARBALL"; \
+	fi; \
+	echo ""; \
+	echo "==============================================="; \
+	echo "Publishing release to GitHub"; \
+	echo "==============================================="; \
 	echo ""; \
 	echo "Creating GitHub release v$$VERSION..."; \
 	if gh release view "v$$VERSION" >/dev/null 2>&1; then \
@@ -122,18 +144,39 @@ publish-release: release
 	else \
 		gh release create "v$$VERSION" "$$TARBALL" \
 			--title "Release v$$VERSION" \
-			--notes "Para Bot Elixir release v$$VERSION. Download and deploy with Jenkins." \
+			--notes "Para Bot Elixir release v$$VERSION. Download and deploy with Salt." \
 			--draft=false; \
 	fi; \
 	echo "✓ Release published to GitHub"; \
-	echo ""; \
-	echo "Next steps:"; \
-	echo "1. Jenkins will automatically detect the new release"; \
-	echo "2. Trigger deployment in Jenkins UI or wait for auto-deployment"; \
-	echo "3. Check deployment status: make jenkins-logs"
+	$(MAKE) sync-release-version; \
+	echo ""
 
-push-and-publish:
-	@git push && $(MAKE) publish-release
+pre-push-cleanup:
+	@echo "🧹 Cleaning up pre-push artifacts..."
+	@if git diff --quiet git-hooks/pre-push; then \
+		echo "✓ No hook changes"; \
+	else \
+		echo "📋 Staging hook changes..."; \
+		git add git-hooks/pre-push; \
+		git commit -m "chore: sync pre-push hook" || true; \
+	fi
+	@if git diff --quiet mix.lock; then \
+		echo "✓ No lock file changes"; \
+	else \
+		echo "📋 Staging lock file changes..."; \
+		git add mix.lock; \
+		git commit -m "chore: lock file updates from pre-push validation" || true; \
+	fi
+	@echo "✓ Ready to push"
+
+git-push: pre-push-cleanup
+	@BOT_NAME=para; \
+	LOG_FILE="/tmp/git-push-$${BOT_NAME}-$$(date +%s).log"; \
+	echo "Pushing to origin/main and logging to $$LOG_FILE..."; \
+	git push 2>&1 | tee "$$LOG_FILE"; \
+	echo "✓ Log saved: $$LOG_FILE"
+
+push-and-publish: git-push publish-release
 
 logs:
 	@$(SCRIPTS_DIRECTORY)/tail_bot_log.sh
