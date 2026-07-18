@@ -43,6 +43,36 @@ defmodule BotArmyPara.ParaNotesTest do
     assert body =~ "character entered tavern"
   end
 
+  test "capture_append respects custom path field", %{tmp_dir: tmp_dir} do
+    payload = %{
+      "schema_version" => "1.0",
+      "source_bot" => "test",
+      "path" => "projects/test_project/DAILY_LOG.md",
+      "summary" => "custom path test"
+    }
+
+    assert {:ok, data} = BotArmyPara.ParaNotes.capture_append(payload)
+    assert data["relative_path"] == "projects/test_project/DAILY_LOG.md"
+
+    body = File.read!(Path.join(tmp_dir, "projects/test_project/DAILY_LOG.md"))
+    assert body =~ "custom path test"
+  end
+
+  test "capture_append respects relative_path field", %{tmp_dir: tmp_dir} do
+    payload = %{
+      "schema_version" => "1.0",
+      "source_bot" => "test",
+      "relative_path" => "areas/work/LOG.md",
+      "summary" => "relative path test"
+    }
+
+    assert {:ok, data} = BotArmyPara.ParaNotes.capture_append(payload)
+    assert data["relative_path"] == "areas/work/LOG.md"
+
+    body = File.read!(Path.join(tmp_dir, "areas/work/LOG.md"))
+    assert body =~ "relative path test"
+  end
+
   test "route_note prefers project weekly log", %{tmp_dir: tmp_dir} do
     payload = %{
       "schema_version" => "1.0",

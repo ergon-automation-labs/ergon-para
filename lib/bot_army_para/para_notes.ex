@@ -10,7 +10,9 @@ defmodule BotArmyPara.ParaNotes do
   def capture_append(payload) when is_map(payload) do
     with :ok <- validate_schema_version(payload),
          source <- source_slug(payload),
-         relative_path <- "inbox/bots/#{source}.md",
+         relative_path <-
+           Map.get(payload, "path") || Map.get(payload, "relative_path") ||
+             "inbox/bots/#{source}.md",
          content <- build_capture_entry(payload),
          {:ok, data} <-
            write(
