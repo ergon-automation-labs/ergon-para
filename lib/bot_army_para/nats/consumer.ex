@@ -364,6 +364,7 @@ defmodule BotArmyPara.NATS.Consumer do
         "root_directory" =>
           System.get_env("PARA_FS_ROOT") || Path.expand("~/Documents/personal_os"),
         "version" => @version,
+        "system_node" => System.get_env("PARA_SYSTEM_NODE") || "unknown",
         "available_subjects" => Enum.map(@subjects, & &1.subject)
       })
 
