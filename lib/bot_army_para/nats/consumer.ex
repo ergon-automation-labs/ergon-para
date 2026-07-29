@@ -359,12 +359,15 @@ defmodule BotArmyPara.NATS.Consumer do
   end
 
   defp handle_para_system_config(msg, state) do
+    system_node = System.get_env("PARA_SYSTEM_NODE") || "unknown"
+    Logger.info("PARA_SYSTEM_NODE env var: #{inspect(system_node)}")
+
     response =
       Reply.ok(%{
         "root_directory" =>
           System.get_env("PARA_FS_ROOT") || Path.expand("~/Documents/personal_os"),
         "version" => @version,
-        "system_node" => System.get_env("PARA_SYSTEM_NODE") || "unknown",
+        "system_node" => system_node,
         "available_subjects" => Enum.map(@subjects, & &1.subject)
       })
 
