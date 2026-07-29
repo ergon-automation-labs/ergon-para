@@ -359,8 +359,25 @@ defmodule BotArmyPara.NATS.Consumer do
   end
 
   defp handle_para_system_config(msg, state) do
-    system_node = System.get_env("PARA_SYSTEM_NODE") || "unknown"
-    Logger.info("PARA_SYSTEM_NODE env var: #{inspect(system_node)}")
+    # Determine system node from environment variable or extract from Erlang node name
+    system_node =
+      case System.get_env("PARA_SYSTEM_NODE") do
+        nil ->
+          # Extract hostname from Erlang node name (format: para_bot@hostname)
+          case Node.self() do
+            :nonode@nohost ->
+              "unknown"
+
+            node ->
+              node
+              |> Atom.to_string()
+              |> String.split("@")
+              |> List.last()
+          end
+
+        value ->
+          value
+      end
 
     response =
       Reply.ok(%{
