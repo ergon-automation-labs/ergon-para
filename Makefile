@@ -3,6 +3,29 @@ MIX ?= /Users/abby/.local/share/mise/shims/mix
 
 .PHONY: setup help deps test credo dialyzer coverage check format clean release publish-release setup-hooks setup-db reset-db logs git-push pre-push-cleanup push-and-publish deploy-bot bump-version
 
+_FIND_MONOREPO_ROOT = \
+	if [ -n "$(MONOREPO_ROOT)" ]; then \
+		echo "$(MONOREPO_ROOT)"; \
+		exit 0; \
+	fi; \
+	if [ -d "../../elixir_bots" ] && [ -f "../../elixir_bots/Makefile" ]; then \
+		if grep -q "verify-bot-nats:" "../../elixir_bots/Makefile"; then \
+			echo "$$(cd ../../elixir_bots && pwd)"; \
+			exit 0; \
+		fi; \
+	fi; \
+	CURRENT_DIR=$$(pwd); \
+	while [ "$$CURRENT_DIR" != "/" ]; do \
+		if [ -f "$$CURRENT_DIR/Makefile" ] && grep -q "verify-bot-nats:" "$$CURRENT_DIR/Makefile"; then \
+			if [ -d "$$CURRENT_DIR/bots" ] || [ -d "$$CURRENT_DIR/bot_army_infra" ]; then \
+				echo "$$CURRENT_DIR"; \
+				exit 0; \
+			fi; \
+		fi; \
+		CURRENT_DIR=$$(dirname "$$CURRENT_DIR"); \
+	done; \
+	echo ""
+
 help:
 	@echo "Para Bot"
 	@echo ""
