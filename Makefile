@@ -209,12 +209,12 @@ deploy-bot: publish-release
 		echo "   Current directory: $$(pwd)"; \
 		exit 1; \
 	}; \
-	DIR_NAME=$$(basename $$(pwd)); \
+	BOT_NAME=$$(basename $$(pwd) | sed 's/bot_army_//'); \
 	echo "Deploying from: $$(pwd)"; \
-	echo "Directory: $$DIR_NAME"; \
+	echo "Bot name: $${BOT_NAME}"; \
 	echo "Monorepo root: $$MONOREPO_ROOT"; \
 	echo ""; \
-	$(MAKE) -C "$$MONOREPO_ROOT" deploy-bot BOT=$$DIR_NAME TARGET=mini
+	$(MAKE) -C "$$MONOREPO_ROOT" deploy-bot BOT=$${BOT_NAME} TARGET=mini
 
 bump-version:
 	@if [ -z "$(BUMP)" ]; then echo "Usage: make bump-version BUMP=major|minor|patch"; exit 1; fi
