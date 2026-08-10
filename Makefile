@@ -203,8 +203,18 @@ logs:
 ## Deploy bot via bot_army_infra (called by: make deploy-bot BOT=para from monorepo)
 ## This target is invoked by bot_army_infra's deploy-bot target
 deploy-bot: publish-release
-	@echo "✓ Deploy-bot complete: GitHub release published"
-	@echo "  Infra will now handle: sync → apply Salt state → restart"
+	@MONOREPO_ROOT=$$($(call _FIND_MONOREPO_ROOT)) || { \
+		echo "❌ Could not find monorepo root"; \
+		echo "   Expected to find Makefile with 'deploy-bot' target"; \
+		echo "   Current directory: $$(pwd)"; \
+		exit 1; \
+	}; \
+	DIR_NAME=$$(basename $$(pwd)); \
+	echo "Deploying from: $$(pwd)"; \
+	echo "Directory: $$DIR_NAME"; \
+	echo "Monorepo root: $$MONOREPO_ROOT"; \
+	echo ""; \
+	$(MAKE) -C "$$MONOREPO_ROOT" deploy-bot BOT=$$DIR_NAME TARGET=mini
 
 bump-version:
 	@if [ -z "$(BUMP)" ]; then echo "Usage: make bump-version BUMP=major|minor|patch"; exit 1; fi
