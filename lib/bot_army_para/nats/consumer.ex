@@ -98,18 +98,30 @@ defmodule BotArmyPara.NATS.Consumer do
         Connection.subscribe_to_status()
         Logger.info("Connected to NATS, subscribing to topics")
 
-        subscriptions =
-          subscribe_subjects(conn, [
-            "para.fs.write",
-            "para.fs.read",
-            "para.fs.list",
-            "para.fs.search",
-            "para.capture.append",
-            "para.note.route",
-            "para.digest.generate",
-            "para.system.config",
-            "para.auth.get_write_token"
-          ])
+        node_suffix = System.get_env("PARA_SYSTEM_NODE", "")
+
+        base_subjects = [
+          "para.fs.write",
+          "para.fs.read",
+          "para.fs.list",
+          "para.fs.search",
+          "para.capture.append",
+          "para.note.route",
+          "para.digest.generate",
+          "para.system.config",
+          "para.auth.get_write_token"
+        ]
+
+        # Subscribe to base subjects AND node-specific variants (e.g., para.system.config.air)
+        subjects_to_subscribe =
+          base_subjects ++
+            if node_suffix != "" do
+              Enum.map(base_subjects, &"#{&1}.#{node_suffix}")
+            else
+              []
+            end
+
+        subscriptions = subscribe_subjects(conn, subjects_to_subscribe)
 
         # Register subjects for runtime discovery and refresh before stale timeout.
         deployment_status = Application.get_env(:bot_army_para, :deployment_status, "deployed")
@@ -206,35 +218,34 @@ defmodule BotArmyPara.NATS.Consumer do
     end
   end
 
-  defp handle_request(%{topic: "para.fs.write"} = msg, state),
-    do: handle_para_fs_write(msg, state)
+  defp normalize_subject(topic) do
+    """
+    Strip .air or .mini suffix from topic to get base subject.
+    E.g., "para.system.config.air" -> "para.system.config"
+    """
 
-  defp handle_request(%{topic: "para.fs.read"} = msg, state),
-    do: handle_para_fs_read(msg, state)
+    topic
+    |> String.replace_suffix(".air", "")
+    |> String.replace_suffix(".mini", "")
+  end
 
-  defp handle_request(%{topic: "para.fs.list"} = msg, state),
-    do: handle_para_fs_list(msg, state)
+  defp handle_request(msg, state) do
+    base_subject = normalize_subject(msg.topic)
+    msg_with_base = %{msg | topic: base_subject}
 
-  defp handle_request(%{topic: "para.fs.search"} = msg, state),
-    do: handle_para_fs_search(msg, state)
-
-  defp handle_request(%{topic: "para.capture.append"} = msg, state),
-    do: handle_para_capture_append(msg, state)
-
-  defp handle_request(%{topic: "para.note.route"} = msg, state),
-    do: handle_para_note_route(msg, state)
-
-  defp handle_request(%{topic: "para.digest.generate"} = msg, state),
-    do: handle_para_digest_generate(msg, state)
-
-  defp handle_request(%{topic: "para.system.config"} = msg, state),
-    do: handle_para_system_config(msg, state)
-
-  defp handle_request(%{topic: "para.auth.get_write_token"} = msg, state),
-    do: handle_para_auth_get_write_token(msg, state)
-
-  defp handle_request(%{topic: topic}, _state),
-    do: Logger.debug("Unknown request/reply subject: #{topic}")
+    case base_subject do
+      "para.fs.write" -> handle_para_fs_write(msg_with_base, state)
+      "para.fs.read" -> handle_para_fs_read(msg_with_base, state)
+      "para.fs.list" -> handle_para_fs_list(msg_with_base, state)
+      "para.fs.search" -> handle_para_fs_search(msg_with_base, state)
+      "para.capture.append" -> handle_para_capture_append(msg_with_base, state)
+      "para.note.route" -> handle_para_note_route(msg_with_base, state)
+      "para.digest.generate" -> handle_para_digest_generate(msg_with_base, state)
+      "para.system.config" -> handle_para_system_config(msg_with_base, state)
+      "para.auth.get_write_token" -> handle_para_auth_get_write_token(msg_with_base, state)
+      _ -> Logger.debug("Unknown request/reply subject: #{msg.topic}")
+    end
+  end
 
   defp handle_pubsub(msg) do
     case Decoder.decode(msg.body) do
