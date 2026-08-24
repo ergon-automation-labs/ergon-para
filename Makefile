@@ -137,7 +137,7 @@ sync-release-version:
 		echo "❌ Failed to resolve version from mix.exs"; exit 1; \
 	fi; \
 	TIMESTAMP=$$(date -u +"%Y-%m-%dT%H:%M:%SZ"); \
-	echo "$$VERSION $$TIMESTAMP" > .release-published; \
+	echo "$$VERSION" > .release-published; \
 	echo "✅ Synced release version: v$$VERSION ($$TIMESTAMP)"
 
 publish-release: release
