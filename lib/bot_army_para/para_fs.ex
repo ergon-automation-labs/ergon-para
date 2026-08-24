@@ -377,8 +377,8 @@ defmodule BotArmyPara.ParaFs do
       rel_path = String.replace_leading(full_path, para_root <> "/", "")
 
       if path_matches_scope?(rel_path, scope) &&
-           filename_or_content_matches?(full_path, para_root, query, pattern, search_content) do
-        [build_match(full_path, para_root, query)]
+           filename_or_content_matches?(full_path, query, pattern, search_content) do
+        [build_match(full_path, rel_path, query)]
       else
         []
       end
@@ -432,8 +432,12 @@ defmodule BotArmyPara.ParaFs do
     String.starts_with?(path, scope <> "/")
   end
 
-  defp filename_or_content_matches?(path, base_dir, query, pattern, search_content) do
-    filename_matches = String.contains?(Path.basename(path), query)
+  defp filename_or_content_matches?(path, query, pattern, search_content) do
+    # `path` is already absolute here (built from para_root during the walk) —
+    # do not re-join it with a base dir, that produces a nonexistent doubled
+    # path and silently makes every File.regular?/File.read check fail.
+    filename_matches =
+      String.contains?(String.downcase(Path.basename(path)), String.downcase(query))
 
     pattern_matches =
       if pattern do
@@ -443,8 +447,8 @@ defmodule BotArmyPara.ParaFs do
       end
 
     content_matches =
-      if search_content and File.regular?(Path.join(base_dir, path)) do
-        case File.read(Path.join(base_dir, path)) do
+      if search_content and File.regular?(path) do
+        case File.read(path) do
           {:ok, content} -> String.contains?(String.downcase(content), String.downcase(query))
           {:error, _} -> false
         end
@@ -462,14 +466,20 @@ defmodule BotArmyPara.ParaFs do
     |> Regex.match?(filename)
   end
 
-  defp build_match(path, base_dir, query) do
-    full_path = Path.join(base_dir, path)
-
+  # `full_path` is absolute (used for File.* ops); `rel_path` is relative to
+  # para_root and is what gets returned to callers, matching the convention
+  # used by para.fs.list/read (never leak the host filesystem's absolute path).
+  defp build_match(full_path, rel_path, query) do
     match_type =
       cond do
-        String.contains?(Path.basename(path), query) -> "filename"
-        File.regular?(full_path) -> "content"
-        true -> "filename"
+        String.contains?(String.downcase(Path.basename(rel_path)), String.downcase(query)) ->
+          "filename"
+
+        File.regular?(full_path) ->
+          "content"
+
+        true ->
+          "filename"
       end
 
     excerpt =
@@ -486,14 +496,19 @@ defmodule BotArmyPara.ParaFs do
       end
 
     %{
-      "path" => path,
+      "path" => rel_path,
       "match_type" => match_type,
       "excerpt" => excerpt
     }
   end
 
   defp extract_excerpt(content, query, context_chars) do
-    case String.split(content, "\n") |> Enum.find(&String.contains?(&1, query)) do
+    downcased_query = String.downcase(query)
+
+    content
+    |> String.split("\n")
+    |> Enum.find(&String.contains?(String.downcase(&1), downcased_query))
+    |> case do
       nil -> nil
       line -> String.slice(line, 0, context_chars)
     end
