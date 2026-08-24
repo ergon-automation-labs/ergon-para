@@ -11,8 +11,7 @@ defmodule BotArmyPara.ParaFs do
 
   @spec handle_write(payload()) :: {:ok, map()} | {:error, String.t(), atom()}
   def handle_write(payload) when is_map(payload) do
-    with :ok <- validate_schema_version(payload),
-         :ok <- validate_auth_token(payload),
+    with :ok <- validate_auth_token(payload),
          {:ok, relative_path} <- normalize_relative_path(payload["relative_path"]),
          {:ok, content} <- decode_content(payload),
          :ok <- validate_size(content),

@@ -8,8 +8,7 @@ defmodule BotArmyPara.ParaNotes do
 
   @spec capture_append(map()) :: {:ok, map()} | {:error, String.t(), atom()}
   def capture_append(payload) when is_map(payload) do
-    with :ok <- validate_schema_version(payload),
-         source <- source_slug(payload),
+    with source <- source_slug(payload),
          relative_path <-
            Map.get(payload, "path") || Map.get(payload, "relative_path") ||
              "inbox/bots/#{source}.md",
@@ -27,8 +26,7 @@ defmodule BotArmyPara.ParaNotes do
 
   @spec route_note(map()) :: {:ok, map()} | {:error, String.t(), atom()}
   def route_note(payload) when is_map(payload) do
-    with :ok <- validate_schema_version(payload),
-         {:ok, relative_path} <- routed_relative_path(payload),
+    with {:ok, relative_path} <- routed_relative_path(payload),
          content <- build_routed_entry(payload),
          {:ok, data} <-
            write(
@@ -43,8 +41,7 @@ defmodule BotArmyPara.ParaNotes do
 
   @spec digest_generate(map()) :: {:ok, map()} | {:error, String.t(), atom()}
   def digest_generate(payload) when is_map(payload) do
-    with :ok <- validate_schema_version(payload),
-         {:ok, sources} <- read_sources(payload),
+    with {:ok, sources} <- read_sources(payload),
          digest <- build_digest(payload, sources),
          target <- Map.get(payload, "target_path", "inbox/review_digest.md"),
          {:ok, data} <-
