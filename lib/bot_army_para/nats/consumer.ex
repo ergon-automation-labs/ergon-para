@@ -22,6 +22,22 @@ defmodule BotArmyPara.NATS.Consumer do
   @registry_bot_name "para"
   @version Mix.Project.config()[:version]
 
+  # Base (unsuffixed) subjects — gated by leader role since air and mini would
+  # otherwise both answer the same request and race for whichever reply lands
+  # first. Node-suffixed variants (e.g. para.fs.search.mini) are for callers
+  # that deliberately target one node and stay subscribed regardless of role.
+  @base_subjects [
+    "para.fs.write",
+    "para.fs.read",
+    "para.fs.list",
+    "para.fs.search",
+    "para.capture.append",
+    "para.note.route",
+    "para.digest.generate",
+    "para.system.config",
+    "para.auth.get_write_token"
+  ]
+
   # Register subjects with their metadata for runtime discovery
   @subjects [
     %{
@@ -81,13 +97,24 @@ defmodule BotArmyPara.NATS.Consumer do
     Logger.info("Starting NATS consumer")
 
     state = %{
-      subscriptions: [],
+      base_subscriptions: [],
+      node_subscriptions: [],
       conn: nil,
       opts: opts,
-      registry_registered?: false
+      registry_registered?: false,
+      # LeaderElection announces the real role shortly after startup; defaulting
+      # to standby means a not-yet-elected node never answers base subjects.
+      role: :standby
     }
 
     {:ok, state, {:continue, :connect}}
+  end
+
+  @doc """
+  Called by `BotArmyLibraryRuntime.LeaderElection`'s `on_role_change` callback.
+  """
+  def leader_role_changed(role) when role in [:primary, :standby] do
+    GenServer.cast(__MODULE__, {:leader_role_changed, role})
   end
 
   @impl true
@@ -100,28 +127,24 @@ defmodule BotArmyPara.NATS.Consumer do
 
         node_suffix = System.get_env("PARA_SYSTEM_NODE", "")
 
-        base_subjects = [
-          "para.fs.write",
-          "para.fs.read",
-          "para.fs.list",
-          "para.fs.search",
-          "para.capture.append",
-          "para.note.route",
-          "para.digest.generate",
-          "para.system.config",
-          "para.auth.get_write_token"
-        ]
+        # Node-specific variants (e.g., para.fs.search.air) are for callers that
+        # deliberately target one node — always subscribed regardless of role.
+        node_subjects =
+          if node_suffix != "" do
+            Enum.map(@base_subjects, &"#{&1}.#{node_suffix}")
+          else
+            []
+          end
 
-        # Subscribe to base subjects AND node-specific variants (e.g., para.system.config.air)
-        subjects_to_subscribe =
-          base_subjects ++
-            if node_suffix != "" do
-              Enum.map(base_subjects, &"#{&1}.#{node_suffix}")
-            else
-              []
-            end
+        node_subscriptions = subscribe_subjects(conn, node_subjects)
 
-        subscriptions = subscribe_subjects(conn, subjects_to_subscribe)
+        base_subscriptions =
+          if state.role == :primary do
+            subscribe_subjects(conn, @base_subjects)
+          else
+            Logger.info("Para consumer standby — not subscribing to base subjects")
+            []
+          end
 
         # Register subjects for runtime discovery and refresh before stale timeout.
         deployment_status = Application.get_env(:bot_army_para, :deployment_status, "deployed")
@@ -131,9 +154,10 @@ defmodule BotArmyPara.NATS.Consumer do
         {:noreply,
          %{
            state
-           | subscriptions: subscriptions,
+           | base_subscriptions: base_subscriptions,
+             node_subscriptions: node_subscriptions,
              conn: conn,
-             registry_registered?: subscriptions != []
+             registry_registered?: base_subscriptions != [] or node_subscriptions != []
          }}
 
       {:error, _reason} ->
@@ -141,6 +165,35 @@ defmodule BotArmyPara.NATS.Consumer do
         Process.send_after(self(), :connect_retry, @reconnect_delay_ms)
         {:noreply, state}
     end
+  end
+
+  @impl true
+  def handle_cast({:leader_role_changed, :primary}, %{conn: nil} = state) do
+    Logger.warning(
+      "Para consumer designated PRIMARY, but NATS not connected yet — will subscribe once connected"
+    )
+
+    {:noreply, %{state | role: :primary}}
+  end
+
+  def handle_cast({:leader_role_changed, :primary}, %{base_subscriptions: []} = state) do
+    Logger.warning("Para consumer becoming PRIMARY — subscribing to base subjects")
+    base_subscriptions = subscribe_subjects(state.conn, @base_subjects)
+    {:noreply, %{state | role: :primary, base_subscriptions: base_subscriptions}}
+  end
+
+  def handle_cast({:leader_role_changed, :primary}, state) do
+    {:noreply, %{state | role: :primary}}
+  end
+
+  def handle_cast({:leader_role_changed, :standby}, state) do
+    Logger.warning("Para consumer becoming STANDBY — unsubscribing from base subjects")
+
+    if state.conn do
+      Enum.each(state.base_subscriptions, &Gnat.unsub(state.conn, &1))
+    end
+
+    {:noreply, %{state | role: :standby, base_subscriptions: []}}
   end
 
   @impl true
@@ -162,7 +215,15 @@ defmodule BotArmyPara.NATS.Consumer do
   def handle_info({:nats, :disconnected}, state) do
     Logger.warning("Disconnected from NATS, will reconnect")
     Process.send_after(self(), :connect_retry, @reconnect_delay_ms)
-    {:noreply, %{state | subscriptions: [], conn: nil, registry_registered?: false}}
+
+    {:noreply,
+     %{
+       state
+       | base_subscriptions: [],
+         node_subscriptions: [],
+         conn: nil,
+         registry_registered?: false
+     }}
   end
 
   @impl true
@@ -173,7 +234,9 @@ defmodule BotArmyPara.NATS.Consumer do
 
   @impl true
   def handle_info(:registry_heartbeat, state) do
-    if state.registry_registered? and state.subscriptions != [] do
+    has_subscriptions? = state.base_subscriptions != [] or state.node_subscriptions != []
+
+    if state.registry_registered? and has_subscriptions? do
       Registry.register(@registry_bot_name, @subjects, @version)
       Process.send_after(self(), :registry_heartbeat, @registry_heartbeat_ms)
     end
