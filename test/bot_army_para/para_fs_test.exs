@@ -66,6 +66,25 @@ defmodule BotArmyPara.ParaFsTest do
     assert {:ok, _data} = BotArmyPara.ParaFs.handle_write(payload)
   end
 
+  test "lists a directory with real files without crashing on mtime", %{tmp_dir: tmp_dir} do
+    dir = Path.join(tmp_dir, "areas/companion/observations")
+    File.mkdir_p!(dir)
+    File.write!(Path.join(dir, "2026-08-24-angle-3.md"), "content")
+
+    payload = %{
+      "schema_version" => "1.0",
+      "relative_path" => "areas/companion/observations",
+      "recursive" => false
+    }
+
+    # Regression test: File.stat/1 (no options) returns mtime as an Erlang
+    # datetime tuple, not a Unix integer, which crashes
+    # DateTime.from_unix!/1 in build_entry/3 on every real file. Must call
+    # File.stat/2 with time: :posix.
+    assert {:ok, %{"entries" => entries}} = BotArmyPara.ParaFs.handle_list(payload)
+    assert [%{"name" => "2026-08-24-angle-3.md", "modified_at" => %DateTime{}}] = entries
+  end
+
   defp restore_env(key, nil), do: System.delete_env(key)
   defp restore_env(key, value), do: System.put_env(key, value)
 end

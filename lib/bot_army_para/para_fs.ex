@@ -305,7 +305,7 @@ defmodule BotArmyPara.ParaFs do
     depth = String.split(path, "/") |> length()
 
     if recursive or depth <= 1 do
-      case File.stat(full_path) do
+      case File.stat(full_path, time: :posix) do
         {:ok, stat} ->
           %{
             "name" => path,

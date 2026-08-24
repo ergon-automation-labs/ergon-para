@@ -1,7 +1,7 @@
 SCRIPTS_DIRECTORY ?= $(abspath $(CURDIR)/../scripts)
 MIX ?= /Users/abby/.local/share/mise/shims/mix
 
-.PHONY: setup help deps test credo dialyzer coverage check format clean release publish-release setup-hooks setup-db reset-db logs git-push pre-push-cleanup push-and-publish deploy-bot bump-version
+.PHONY: setup help deps test dialyzer coverage check format clean release publish-release setup-hooks setup-db reset-db logs push-and-publish deploy-bot
 
 _FIND_MONOREPO_ROOT = \
 	if [ -n "$(MONOREPO_ROOT)" ]; then \
@@ -85,7 +85,7 @@ reset-db:
 init:
 	@if [ ! -d .git ]; then git init; echo "Git initialized."; else echo "Git already initialized."; fi
 
-compile:
+_compile-impl:
 	@LOG_FILE="/tmp/compile-para-$$(date +%s).log"; \
 	echo "Compiling para and logging to $$LOG_FILE..."; \
 	$(MIX) compile 2>&1 | tee "$$LOG_FILE"; \
@@ -94,17 +94,8 @@ compile:
 deps:
 	$(MIX) deps.get
 
-compile:
-	@LOG_FILE="/tmp/compile-para-$$(date +%s).log"; \
-	echo "Compiling para and logging to $$LOG_FILE..."; \
-	$(MIX) compile 2>&1 | tee "$$LOG_FILE"; \
-	echo "✓ Compilation log: $$LOG_FILE"
-
 test:
 	$(MIX) test
-
-credo:
-	$(MIX) credo
 
 dialyzer: deps
 	$(MIX) dialyzer
@@ -186,37 +177,6 @@ publish-release: release
 	$(MAKE) sync-release-version; \
 	echo ""
 
-pre-push-cleanup:
-	@echo "🧹 Cleaning up pre-push artifacts..."
-	@if git diff --quiet git-hooks/pre-push; then \
-		echo "✓ No hook changes"; \
-	else \
-		echo "📋 Staging hook changes..."; \
-		git add git-hooks/pre-push; \
-		git commit -m "chore: sync pre-push hook" || true; \
-	fi
-	@if git diff --quiet mix.lock; then \
-		echo "✓ No lock file changes"; \
-	else \
-		echo "📋 Staging lock file changes..."; \
-		git add mix.lock; \
-		git commit -m "chore: lock file updates from pre-push validation" || true; \
-	fi
-	@echo "✓ Ready to push"
-
-push: test compile credo pre-push-cleanup
-	@echo "✅ All validations passed"
-	@echo "$$(date +%s)" > .push-validated
-	@echo "✓ Proof-of-validation created"
-	@$(MAKE) git-push
-
-
-git-push: pre-push-cleanup
-	@BOT_NAME=para; \
-	LOG_FILE="/tmp/git-push-$${BOT_NAME}-$$(date +%s).log"; \
-	echo "Pushing to origin/main and logging to $$LOG_FILE..."; \
-	git push 2>&1 | tee "$$LOG_FILE"; \
-	echo "✓ Log saved: $$LOG_FILE"
 
 push-and-publish: git-push publish-release
 
@@ -239,9 +199,11 @@ deploy-bot: publish-release
 	echo ""; \
 	$(MAKE) -C "$$MONOREPO_ROOT" deploy-bot BOT=$${BOT_NAME} TARGET=mini
 
-bump-version:
-	@if [ -z "$(BUMP)" ]; then echo "Usage: make bump-version BUMP=major|minor|patch"; exit 1; fi
-	@OLD=$$(grep 'version:' mix.exs | head -1 | sed -E 's/.*version: "([^"]+)".*/\1/'); \
-	bash $(SCRIPTS_DIRECTORY)/bump_version.sh mix.exs $(BUMP) > /dev/null; \
-	NEW=$$(grep 'version:' mix.exs | head -1 | sed -E 's/.*version: "([^"]+)".*/\1/'); \
-	echo "✓ Bumped: $$OLD → $$NEW"
+# Shared targets (push, credo, pre-push-cleanup, bump-version, git-push).
+# Defined once in bot_army_infra so they cannot drift per repo.
+BOT_ARMY_COMMON_MK := $(abspath $(CURDIR)/../bot_army_infra/make/common.mk)
+ifeq ($(wildcard $(BOT_ARMY_COMMON_MK)),)
+$(warning bot_army_infra not found at $(BOT_ARMY_COMMON_MK) - shared targets unavailable)
+else
+include $(BOT_ARMY_COMMON_MK)
+endif
