@@ -1,1 +1,2 @@
 lib/bot_army_para/nats/consumer.ex:102:call_to_missing
+lib/bot_army_para/application.ex:41:unknown_function
