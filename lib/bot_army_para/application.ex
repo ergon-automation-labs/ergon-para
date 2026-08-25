@@ -18,6 +18,11 @@ defmodule BotArmyPara.Application do
 
   @impl true
   def start(_type, _args) do
+    # Load configuration from Salt-deployed config file (not env vars)
+    # This fixes macOS launchd environment variable pass-through limitation
+    config_data = BotArmyLibraryRuntime.ConfigLoader.load_config()
+    Application.put_env(:bot_army_library_runtime, :config_data, config_data)
+
     children =
       []
       |> add_pulse_publisher()
@@ -34,16 +39,23 @@ defmodule BotArmyPara.Application do
     if @env == :test do
       children
     else
+      role_str = BotArmyLibraryRuntime.ConfigLoader.get("PARA_NODE_ROLE", "primary")
+      role = parse_role(role_str)
+
       [
         {BotArmyLibraryRuntime.LeaderElection,
          service: "para",
-         node_name: System.get_env("NODE_NAME", "unknown"),
-         default_role: BotArmyLibraryRuntime.LeaderElection.role_from_env("PARA_NODE_ROLE"),
+         node_name: BotArmyLibraryRuntime.ConfigLoader.get("NODE_NAME", "unknown"),
+         default_role: role,
          on_role_change: {BotArmyPara.NATS.Consumer, :leader_role_changed, []}}
         | children
       ]
     end
   end
+
+  defp parse_role("standby"), do: :standby
+  defp parse_role("primary"), do: :primary
+  defp parse_role(_), do: :primary
 
   defp add_workers(children) do
     if @env == :test do
