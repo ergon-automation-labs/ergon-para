@@ -37,7 +37,7 @@ defmodule BotArmyPara.Application do
       [
         {BotArmyLibraryRuntime.LeaderElection,
          service: "para",
-         node_name: System.get_env("LEADER_NODE_NAME", "unknown"),
+         node_name: System.get_env("NODE_NAME", "unknown"),
          default_role: BotArmyLibraryRuntime.LeaderElection.role_from_env("PARA_NODE_ROLE"),
          on_role_change: {BotArmyPara.NATS.Consumer, :leader_role_changed, []}}
         | children
