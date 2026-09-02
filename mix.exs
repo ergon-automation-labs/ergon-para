@@ -4,7 +4,7 @@ defmodule BotArmyPara.MixProject do
   def project do
     [
       app: :bot_army_para,
-      version: "0.1.26",
+      version: "0.1.27",
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -26,7 +26,7 @@ defmodule BotArmyPara.MixProject do
   defp deps do
     [
       {:bot_army_library_core, path: "../bot_army_library_core"},
-      {:bot_army_library_runtime, path: "../bot_army_library_runtime"},
+      {:bot_army_library_runtime, path: "../bot_army_library_runtime", override: true},
       {:ecto_sql, "~> 3.10"},
       {:postgrex, "~> 0.17"},
       {:jason, "~> 1.4"},
