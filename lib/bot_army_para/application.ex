@@ -61,7 +61,11 @@ defmodule BotArmyPara.Application do
     if @env == :test do
       children
     else
-      [{BotArmyPara.NATS.Consumer, []} | children]
+      [
+        {BotArmyPara.NATS.Consumer, []},
+        {Task.Supervisor, name: BotArmyPara.SearchTaskSupervisor, max_children: 10}
+        | children
+      ]
     end
   end
 end

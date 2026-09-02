@@ -293,6 +293,7 @@ defmodule BotArmyPara.NATS.Consumer do
   end
 
   defp handle_request(msg, state) do
+    Logger.info("[handle_request] Processing request on #{msg.topic} (reply_to: #{msg.reply_to})")
     base_subject = normalize_subject(msg.topic)
     msg_with_base = %{msg | topic: base_subject}
 
@@ -376,20 +377,25 @@ defmodule BotArmyPara.NATS.Consumer do
   end
 
   defp handle_para_fs_search(msg, state) do
-    response =
-      with {:ok, payload} <- decode_request_body(msg.body),
-           {:ok, data} <- ParaFs.handle_search(payload) do
-        Reply.ok(data)
-      else
-        {:error, message, code} ->
-          Reply.error(message, code)
+    Logger.info("[para.fs.search] Spawning async search task for #{msg.reply_to}")
 
-        {:error, :invalid_json} ->
-          Reply.error("invalid JSON", :validation_error)
-      end
+    case BotArmyPara.SearchWorker.spawn_search(
+           BotArmyPara.SearchTaskSupervisor,
+           msg.body,
+           state.conn,
+           msg.reply_to,
+           msg.topic
+         ) do
+      {:ok, _pid} ->
+        Logger.info("[para.fs.search] Search task spawned successfully")
 
-    if state.conn do
-      Gnat.pub(state.conn, msg.reply_to, response)
+      {:error, reason} ->
+        Logger.error("[para.fs.search] Failed to spawn search task: #{inspect(reason)}")
+
+        if state.conn do
+          error_response = Reply.error("search task spawn failed", :internal_error)
+          Gnat.pub(state.conn, msg.reply_to, error_response)
+        end
     end
   end
 
@@ -433,6 +439,10 @@ defmodule BotArmyPara.NATS.Consumer do
   end
 
   defp handle_para_system_config(msg, state) do
+    Logger.info(
+      "[para.system.config] Handler invoked, state.conn present: #{inspect(state.conn != nil)}"
+    )
+
     # Determine system node from environment variable or extract from Erlang node name
     system_node =
       case System.get_env("PARA_SYSTEM_NODE") do
