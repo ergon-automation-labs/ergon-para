@@ -32,25 +32,18 @@ defmodule BotArmyPara.SearchWorker do
     Logger.info("[para.fs.search-async] Starting async search on #{msg_topic}")
 
     response =
-      case decode_request_body(payload) do
-        {:ok, decoded_payload} ->
-          case ParaFs.handle_search(decoded_payload) do
-            {:ok, data} ->
-              Logger.debug("[para.fs.search-async] Search succeeded")
-              Reply.ok(data)
-
-            {:error, message, code} ->
-              Logger.warning("[para.fs.search-async] Search error: #{message} (#{code})")
-              Reply.error(message, code)
-
-            {:error, :invalid_json} ->
-              Logger.warning("[para.fs.search-async] Invalid JSON in request body")
-              Reply.error("invalid JSON", :validation_error)
-          end
-
+      with {:ok, decoded_payload} <- decode_request_body(payload),
+           {:ok, data} <- ParaFs.handle_search(decoded_payload) do
+        Logger.debug("[para.fs.search-async] Search succeeded")
+        Reply.ok(data)
+      else
         {:error, :invalid_json} ->
           Logger.warning("[para.fs.search-async] Failed to decode request body")
           Reply.error("invalid JSON", :validation_error)
+
+        {:error, message, code} ->
+          Logger.warning("[para.fs.search-async] Search error: #{message} (#{code})")
+          Reply.error(message, code)
       end
 
     if conn do
