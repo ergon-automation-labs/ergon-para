@@ -179,7 +179,17 @@ defmodule BotArmyPara.NATS.Consumer do
   def handle_cast({:leader_role_changed, :primary}, %{base_subscriptions: []} = state) do
     Logger.warning("Para consumer becoming PRIMARY — subscribing to base subjects")
     base_subscriptions = subscribe_subjects(state.conn, @base_subjects)
-    {:noreply, %{state | role: :primary, base_subscriptions: base_subscriptions}}
+
+    # Re-register now that we hold subscriptions: if the election resolved AFTER
+    # the NATS-connect path ran, the connect-time register happened while we were
+    # standby and left registry_registered? false — the heartbeat gate then skips
+    # renewal and the central registry sweeps us out after 40s (P10: para missing
+    # from bots.list in the phase-04 VM run).
+    Registry.register(@registry_bot_name, @subjects, @version)
+    Process.send_after(self(), :registry_heartbeat, @registry_heartbeat_ms)
+
+    {:noreply,
+     %{state | role: :primary, base_subscriptions: base_subscriptions, registry_registered?: true}}
   end
 
   def handle_cast({:leader_role_changed, :primary}, state) do
