@@ -88,10 +88,29 @@ defmodule BotArmyPara.ParaFs do
   defp validate_schema_version(_),
     do: {:error, ~s(schema_version must be "1.0"), :validation_error}
 
-  defp validate_auth_token(_payload) do
-    # Token validation disabled: Para.auth.get_write_token works & returns actual token.
-    # Re-enable after debugging why env var comparison was failing.
-    :ok
+  defp validate_auth_token(payload) do
+    case System.get_env("PARA_FS_WRITE_TOKEN") do
+      expected when is_binary(expected) and byte_size(expected) > 0 ->
+        case Map.get(payload, "auth_token") do
+          sent when is_binary(sent) and byte_size(sent) > 0 ->
+            if sent == expected do
+              :ok
+            else
+              {:error, "invalid auth_token", :auth_error}
+            end
+
+          _ ->
+            {:error, "auth_token is required when PARA_FS_WRITE_TOKEN is configured", :auth_error}
+        end
+
+      _ ->
+        # No token configured — auth is not required. Mirrors
+        # para.auth.get_write_token's auth_required: false / write_token: null
+        # response, so clients that omit auth_token when the server hands out
+        # no token keep working. Clients that echo a token they fetched are
+        # also fine here (the server ignores it when auth is off).
+        :ok
+    end
   end
 
   defp normalize_relative_path(path) when is_binary(path) do

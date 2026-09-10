@@ -53,7 +53,9 @@ defmodule BotArmyPara.ParaFsTest do
     assert {:error, _message, :validation_error} = BotArmyPara.ParaFs.handle_write(payload)
   end
 
-  test "allows writes without auth token (validation disabled)" do
+  test "rejects writes without auth_token when PARA_FS_WRITE_TOKEN is configured", %{
+    tmp_dir: tmp_dir
+  } do
     System.put_env("PARA_FS_WRITE_TOKEN", "top-secret")
 
     payload = %{
@@ -62,8 +64,58 @@ defmodule BotArmyPara.ParaFsTest do
       "content" => "hello"
     }
 
-    # Auth token validation is currently disabled pending env var debugging
+    assert {:error, "auth_token is required when PARA_FS_WRITE_TOKEN is configured", :auth_error} =
+             BotArmyPara.ParaFs.handle_write(payload)
+
+    refute File.exists?(Path.join(tmp_dir, "inbox/bots/secure.md"))
+
+    # With auth off (env unset), the write proceeds even with a stale
+    # auth_token field left in the payload.
+    System.delete_env("PARA_FS_WRITE_TOKEN")
     assert {:ok, _data} = BotArmyPara.ParaFs.handle_write(payload)
+    assert File.exists?(Path.join(tmp_dir, "inbox/bots/secure.md"))
+  end
+
+  test "rejects wrong auth_token when PARA_FS_WRITE_TOKEN is configured" do
+    System.put_env("PARA_FS_WRITE_TOKEN", "sekrit-token")
+
+    payload = %{
+      "schema_version" => "1.0",
+      "relative_path" => "inbox/bots/secure.md",
+      "content" => "hello",
+      "auth_token" => "wrong-token"
+    }
+
+    assert {:error, "invalid auth_token", :auth_error} =
+             BotArmyPara.ParaFs.handle_write(payload)
+  end
+
+  test "accepts matching auth_token when PARA_FS_WRITE_TOKEN is configured", %{tmp_dir: tmp_dir} do
+    System.put_env("PARA_FS_WRITE_TOKEN", "sekrit-token")
+
+    payload = %{
+      "schema_version" => "1.0",
+      "relative_path" => "inbox/bots/secure.md",
+      "content" => "hello",
+      "auth_token" => "sekrit-token"
+    }
+
+    assert {:ok, _data} = BotArmyPara.ParaFs.handle_write(payload)
+    assert File.exists?(Path.join(tmp_dir, "inbox/bots/secure.md"))
+  end
+
+  test "empty auth_token string counts as missing when auth is configured" do
+    System.put_env("PARA_FS_WRITE_TOKEN", "sekrit-token")
+
+    payload = %{
+      "schema_version" => "1.0",
+      "relative_path" => "inbox/bots/secure.md",
+      "content" => "hello",
+      "auth_token" => ""
+    }
+
+    assert {:error, "auth_token is required when PARA_FS_WRITE_TOKEN is configured", :auth_error} =
+             BotArmyPara.ParaFs.handle_write(payload)
   end
 
   test "lists a directory with real files without crashing on mtime", %{tmp_dir: tmp_dir} do
