@@ -170,6 +170,7 @@ publish-release: release
 	echo ""
 
 
+	@$(MAKE) publish-deploy-event TARGET=both
 push-and-publish: git-push publish-release
 
 logs:
