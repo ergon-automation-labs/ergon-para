@@ -6,6 +6,7 @@ defmodule BotArmyPara.ParaFs do
   @schema_version "1.0"
   @default_max_bytes 2 * 1024 * 1024
   @allowed_prefixes ["inbox/", "projects/", "areas/", "resources/", "archive/"]
+  @buckets Enum.map(@allowed_prefixes, &String.trim_trailing(&1, "/"))
 
   @type payload :: map()
 
@@ -13,6 +14,7 @@ defmodule BotArmyPara.ParaFs do
   def handle_write(payload) when is_map(payload) do
     with :ok <- validate_auth_token(payload),
          {:ok, relative_path} <- normalize_relative_path(payload["relative_path"]),
+         :ok <- not_a_bucket(relative_path),
          {:ok, content} <- decode_content(payload),
          :ok <- validate_size(content),
          {:ok, mode} <- validate_mode(Map.get(payload, "mode", "write")),
@@ -23,6 +25,11 @@ defmodule BotArmyPara.ParaFs do
   end
 
   def handle_write(_), do: {:error, "request body must be an object", :validation_error}
+
+  defp not_a_bucket(path) when path in @buckets,
+    do: {:error, "#{path} is a bucket, not a file: name a file inside it", :validation_error}
+
+  defp not_a_bucket(_path), do: :ok
 
   @spec handle_read(payload()) :: {:ok, map()} | {:error, String.t(), atom()}
   def handle_read(payload) when is_map(payload) do
@@ -135,7 +142,10 @@ defmodule BotArmyPara.ParaFs do
       true ->
         joined = Enum.join(normalized, "/")
 
-        if Enum.any?(@allowed_prefixes, &String.starts_with?(joined, &1)) do
+        # A bucket's own root (`projects`) is a path too — `projects/` normalises to it, and
+        # listing the top of a bucket is how anything finds what is in it. Writing there still
+        # fails at the filesystem: a bucket root is a directory.
+        if joined in @buckets or Enum.any?(@allowed_prefixes, &String.starts_with?(joined, &1)) do
           {:ok, joined}
         else
           {:error, "relative_path must start with one of: #{Enum.join(@allowed_prefixes, ", ")}",

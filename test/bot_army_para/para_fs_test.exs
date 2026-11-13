@@ -137,6 +137,33 @@ defmodule BotArmyPara.ParaFsTest do
     assert [%{"name" => "2026-08-24-angle-3.md", "modified_at" => %DateTime{}}] = entries
   end
 
+  # Measured 2026-11-13: `projects/` normalised to `projects`, which failed the `projects/` prefix
+  # check, so no bucket could be listed at its top — the knowledge scan could not see the projects.
+  test "a bucket's own root lists, with or without its slash", %{tmp_dir: tmp_dir} do
+    File.mkdir_p!(Path.join(tmp_dir, "projects/Bot Army"))
+
+    for path <- ["projects", "projects/"] do
+      assert {:ok, %{"entries" => [%{"name" => "Bot Army"}]}} =
+               BotArmyPara.ParaFs.handle_list(%{"schema_version" => "1.0", "relative_path" => path})
+    end
+  end
+
+  test "a bucket root is still not a file you can write" do
+    assert {:error, _message, _code} =
+             BotArmyPara.ParaFs.handle_write(%{
+               "schema_version" => "1.0",
+               "relative_path" => "projects",
+               "content" => "x"
+             })
+  end
+
+  test "a name that only begins like a bucket is still refused" do
+    assert {:error, message, _code} =
+             BotArmyPara.ParaFs.handle_list(%{"schema_version" => "1.0", "relative_path" => "projectsX"})
+
+    assert message =~ "must start with one of"
+  end
+
   defp restore_env(key, nil), do: System.delete_env(key)
   defp restore_env(key, value), do: System.put_env(key, value)
 end
